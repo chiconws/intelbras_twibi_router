@@ -1,6 +1,6 @@
 """Constants for the Twibi Router integration."""
 
-DOMAIN = 'twibi_router'
+DOMAIN = 'intelbras_twibi_router'
 
 CONF_TWIBI_IP_ADDRESS = 'Endereço IP do Twibi'
 CONF_PASSWORD = 'password'
