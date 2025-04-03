@@ -3,3 +3,4 @@ Custom component criado com Vibe Coding, entendo um pouco de Python mas ainda es
 
 Importante:
 Foi testado usando um Twibi Fast, não possuo um Twibi Giga para saber se funciona da mesma maneira. Caso tenha problemas, crie uma Issue para discutirmos.
+

@@ -50,13 +50,15 @@ class TwibiAPI:
 
     async def get_module(self, module_id: str) -> Any:
         """Call API for each module."""
-        async with self.session.get(
-            self.get_url + module_id
-        ) as response:
+        while True:
+            try:
+                async with self.session.get(self.get_url + module_id) as response:
 
-            raw_response = await response.text()
+                    raw_response = await response.text()
 
-            return json.loads(raw_response)
+                    return json.loads(raw_response)
+            except json.JSONDecodeError:
+                await self.login()
 
     async def get_online_list_including_wired(self) -> list:
         """Retrieve the list of online devices including wired connections."""
