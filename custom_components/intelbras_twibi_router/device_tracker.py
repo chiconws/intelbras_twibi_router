@@ -5,6 +5,7 @@ import logging
 
 from homeassistant.components.device_tracker import ScannerEntity
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.device_registry import CONNECTION_NETWORK_MAC
 from homeassistant.helpers.storage import Store
@@ -26,10 +27,12 @@ _LOGGER = logging.getLogger(__name__)
 STORAGE_KEY = f"{DOMAIN}.storage"
 STORAGE_VERSION = 1
 
+
 def normalize_mac(mac: str) -> str:
     """Normalize MAC address to colon-separated lowercase."""
     mac = mac.lower().replace("-", "").replace(":", "").strip()
     return ":".join(mac[i:i+2] for i in range(0, 12, 2))
+
 
 async def async_setup_entry(hass: HomeAssistant, config_entry, async_add_entities):
     """Set up device tracker dynamically."""
@@ -53,7 +56,6 @@ async def async_setup_entry(hass: HomeAssistant, config_entry, async_add_entitie
         for mac in stored_data.get(config_entry.entry_id, [])
     }
 
-    # Track which MACs have been added as entities
     added_macs = set()
 
     async def async_update_data():
@@ -61,12 +63,11 @@ async def async_setup_entry(hass: HomeAssistant, config_entry, async_add_entitie
         try:
             online_devices = await twibi.get_online_list()
 
-            # Normalize MACs from API response
             normalized_devices = []
             for dev in online_devices:
-                dev = dev.copy()
-                dev["dev_mac"] = normalize_mac(dev["dev_mac"])
-                normalized_devices.append(dev)
+                dev_copy = dev.copy()
+                dev_copy["dev_mac"] = normalize_mac(dev["dev_mac"])
+                normalized_devices.append(dev_copy)
 
             current_macs = {dev["dev_mac"] for dev in normalized_devices}
             new_macs = current_macs - known_macs
@@ -100,7 +101,15 @@ async def async_setup_entry(hass: HomeAssistant, config_entry, async_add_entitie
                 (dev for dev in coordinator.data.get("online", []) if dev["dev_mac"] == mac),
                 {"dev_mac": mac, "dev_name": f"Device {mac}", "dev_ip": None},
             )
-            initial_entities.append(TwibiDeviceTracker(coordinator, host, mac, device_info))
+            initial_entities.append(
+                TwibiDeviceTracker(
+                    coordinator,
+                    host,
+                    mac,
+                    device_info,
+                    config_entry.entry_id
+                )
+            )
             added_macs.add(mac)
             _LOGGER.debug("Initial entity created for MAC: %s", mac)
 
@@ -110,8 +119,8 @@ async def async_setup_entry(hass: HomeAssistant, config_entry, async_add_entitie
     @callback
     def async_check_for_new_devices():
         """Check for new known MACs and create entities."""
-        known_macs = coordinator.data.get("known_macs", set())
-        new_macs = known_macs - added_macs
+        known_macs_set = coordinator.data.get("known_macs", set())
+        new_macs = known_macs_set - added_macs
 
         if new_macs:
             new_entities = []
@@ -120,17 +129,33 @@ async def async_setup_entry(hass: HomeAssistant, config_entry, async_add_entitie
                     (dev for dev in coordinator.data.get("online", []) if dev["dev_mac"] == mac),
                     {"dev_mac": mac, "dev_name": f"Device {mac}", "dev_ip": None},
                 )
-                new_entities.append(TwibiDeviceTracker(coordinator, host, mac, device_info))
+                new_entities.append(
+                    TwibiDeviceTracker(
+                        coordinator,
+                        host,
+                        mac,
+                        device_info,
+                        config_entry.entry_id
+                    )
+                )
                 added_macs.add(mac)
 
             async_add_entities(new_entities)
 
     coordinator.async_add_listener(async_check_for_new_devices)
 
+
 class TwibiDeviceTracker(CoordinatorEntity, ScannerEntity):
     """Representation of a Twibi-connected device."""
 
-    def __init__(self, coordinator, host, mac: str, device_info: dict) -> None:
+    def __init__(
+        self,
+        coordinator,
+        host,
+        mac: str,
+        device_info: dict,
+        entry_id: str,
+    ) -> None:
         """Initialize the TwibiDeviceTracker.
 
         Args:
@@ -138,23 +163,39 @@ class TwibiDeviceTracker(CoordinatorEntity, ScannerEntity):
             host: The host address of the Twibi router.
             mac: The MAC address of the tracked device.
             device_info: A dictionary containing device information.
+            entry_id: Config entry ID for device registry.
 
         """
         super().__init__(coordinator)
         self._mac = mac
         self._host = host
+        self._entry_id = entry_id
         self._device_info = device_info
         self._attr_entity_category = None
         self._attr_should_poll = False
 
         self._attr_device_info = {
             "identifiers": {(DOMAIN, mac)},
-            "name": device_info.get("dev_name") or f"Device {mac}",
             "connections": {(CONNECTION_NETWORK_MAC, mac)},
-            "via_device": (DOMAIN, host),
             "manufacturer": "Unknown",
             "model": "Network Device",
+            "name": device_info.get("dev_name") or f"Device {mac}",
+            "via_device": (DOMAIN, host),
         }
+
+    async def async_added_to_hass(self):
+        """Register device in the device registry on entity addition."""
+        await super().async_added_to_hass()
+        registry = dr.async_get(self.hass)
+        registry.async_get_or_create(
+            config_entry_id=self._entry_id,
+            **self._attr_device_info
+        )
+
+    @property
+    def device_info(self) -> dict:
+        """Return device registry info for entity linking."""
+        return self._attr_device_info
 
     @property
     def unique_id(self) -> str:

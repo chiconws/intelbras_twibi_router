@@ -1,5 +1,5 @@
 net_link_status = {"net_link_status": [{"net_status": "3", "id": "1"}]}
-#
+
 lan_info = {
     "lan_info": {
         "lan_ip": "192.168.5.1",

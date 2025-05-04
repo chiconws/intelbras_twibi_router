@@ -4,7 +4,7 @@ import logging
 
 import voluptuous as vol
 
-from homeassistant import config_entries
+from homeassistant.config_entries import ConfigFlow
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import AuthenticationError, TwibiAPI
@@ -27,7 +27,7 @@ DATA_SCHEMA = vol.Schema(
     }
 )
 
-class TwibiConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
+class TwibiConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Twibi Tracker."""
 
     async def async_step_user(self, user_input=None):

@@ -22,13 +22,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         configuration_url=f"http://{host}",
     )
 
-    await hass.config_entries.async_forward_entry_setups(entry, ["device_tracker", "sensor"])
+    await hass.config_entries.async_forward_entry_setups(entry, ["device_tracker"])
     return True
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
-    unload_ok = await hass.config_entries.async_unload_platforms(entry, ["device_tracker", "sensor"])
+    unload_ok = await hass.config_entries.async_unload_platforms(entry, ["device_tracker"])
     if unload_ok:
         hass.data[DOMAIN].pop(entry.entry_id, None)
     return unload_ok
