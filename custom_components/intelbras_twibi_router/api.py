@@ -84,7 +84,11 @@ class TwibiAPI:
     async def get_node_info(self) -> list:
         """Get node information about all Twibi devices."""
         data = await self._get_module("node_info")
-        return data.get("node_info", [])
+
+        return sorted(
+            data.get("node_info", []),
+            key=lambda n: 0 if n.get("role") == "1" else 1
+            )
 
     @property
     def base_url(self) -> str:
