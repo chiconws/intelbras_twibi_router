@@ -1,8 +1,8 @@
-"""Switch for Twibi LED control."""
+"""Light for Twibi LED control."""
 from datetime import timedelta
 import logging
 
-from homeassistant.components.switch import SwitchEntity
+from homeassistant.components.light import ColorMode, LightEntity
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.update_coordinator import (
@@ -54,6 +54,7 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
     )
 
     await coordinator.async_config_entry_first_refresh()
+
     entities = []
     for node in coordinator.data:
         serial = node.get("sn")
@@ -62,12 +63,12 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
         else:
             device_id = (DOMAIN, serial)
         entities.append(
-            TwibiLedSwitch(coordinator, api, serial, device_id)
+            TwibiLedLight(coordinator, api, serial, device_id)
         )
     async_add_entities(entities)
 
-class TwibiLedSwitch(CoordinatorEntity, SwitchEntity):
-    """Switch to toggle node LED."""
+class TwibiLedLight(CoordinatorEntity, LightEntity):
+    """Toggle node LED."""
 
     def __init__(
         self,
@@ -76,7 +77,7 @@ class TwibiLedSwitch(CoordinatorEntity, SwitchEntity):
         serial: str,
         device_id: tuple,
     ):
-        """Initialize the Twibi LED switch.
+        """Initialize the Twibi LED light.
 
         Args:
             coordinator: The data update coordinator for managing updates.
@@ -88,9 +89,14 @@ class TwibiLedSwitch(CoordinatorEntity, SwitchEntity):
         super().__init__(coordinator)
         self._api = api
         self._serial = serial
-        self._attr_unique_id = f"{serial}_led"
-        self._attr_name = "LED"
+        self._attr_unique_id = f"led_{serial}"
+        self._attr_name = "Status LED"
+        self._attr_icon = "mdi:led-on"
+        self._attr_state_class = "on_off"
+        self._attr_supported_color_modes = {ColorMode.ONOFF}
+        self._attr_color_mode = ColorMode.ONOFF
         self._device_id = device_id
+        self.entity_id = f"light.status_led_{serial[-4:]}"
 
     @property
     def device_info(self):
@@ -106,7 +112,7 @@ class TwibiLedSwitch(CoordinatorEntity, SwitchEntity):
         )
         return node.get("led") == "1"
 
-    async def _async_toggle(self, status_led: str) -> None:
+    async def _async_set_led_status(self, status_led: str) -> None:
         payload = {
             "led": {
                 "led_en": status_led,
@@ -120,8 +126,8 @@ class TwibiLedSwitch(CoordinatorEntity, SwitchEntity):
 
     async def async_turn_on(self) -> None:
         """Turn on the LED for the Twibi node."""
-        await self._async_toggle("1")
+        await self._async_set_led_status("1")
 
     async def async_turn_off(self) -> None:
         """Turn off the LED for the Twibi node."""
-        await self._async_toggle("0")
+        await self._async_set_led_status("0")

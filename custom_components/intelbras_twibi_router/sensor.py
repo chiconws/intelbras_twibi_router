@@ -59,7 +59,8 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
             entities.append(
                 NodeMetricSensor(
                     coordinator, node, serial,
-                    key="link_quality", name="Link Quality",
+                    key="link_quality",
+                    name="Link Quality",
                     unit="dBm",
                     device_id=device_id
                 )
@@ -70,25 +71,34 @@ class NodeMetricSensor(CoordinatorEntity, SensorEntity):
     """Sensor for a specific node metric."""
 
     def __init__(self, coordinator, node, serial, key, name, unit, device_id):
+        """Initialize the node metric sensor.
+
+        Args:
+            coordinator: The data update coordinator.
+            node: Node information.
+            serial: Serial number of the node.
+            key: Metric key to track.
+            name: Display name of the sensor.
+            unit: Unit of measurement.
+            device_id: Unique device identifier.
+
+        """
         super().__init__(coordinator)
+        self._node = node
         self._serial = serial
         self._key = key
         self._attr_name = name
         self._attr_native_unit_of_measurement = unit
         self._attr_unique_id = f"{serial}_{key}"
         self._device_id = device_id
+        self.entity_id = f"sensor.link_quality_{serial[-4:]}"
 
     @property
     def device_info(self):
+        """Return device information about this entity."""
         return {"identifiers": {self._device_id}}
 
     @property
     def native_value(self):
-        node = next(
-            (n for n in self.coordinator.data
-             if (n.get("sn")) == self._serial), {}
-        )
-        try:
-            return int(node.get(self._key, 0))
-        except ValueError:
-            return node.get(self._key)
+        """Return the state of the sensor."""
+        return self._node.get(self._key)

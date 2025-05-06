@@ -18,7 +18,7 @@ from .const import (
 PLATFORMS = [
     Platform.DEVICE_TRACKER,
     Platform.SENSOR,
-    Platform.SWITCH,
+    Platform.LIGHT,
 ]
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -44,26 +44,27 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     device_registry = dr.async_get(hass)
     for node in nodes:
         serial = node.get("sn")
+        serial_suffix = serial[-4:]
         model = node.get("dut_name")
         base_dr = {
             "config_entry_id": entry.entry_id,
             "manufacturer": MANUFACTURER,
-            "model": model,
+            "model": f"{model} {serial}",
             "sw_version": node.get("dut_version"),
             "configuration_url": f"http://{node.get('ip')}",
         }
         if node.get("role") == "1":
-            primary = " " if len(nodes) == 1 else " primary "
+            primary = " " if len(nodes) == 1 else " Primary "
             device_registry.async_get_or_create(
                 **base_dr,
                 identifiers={(DOMAIN, host)},
-                name=f"{model}{primary}{serial}"
+                name=f"{model}{primary}{serial_suffix}"
             )
         else:
             device_registry.async_get_or_create(
                 **base_dr,
                 identifiers={(DOMAIN, serial)},
-                name=f"{model} secondary {serial}",
+                name=f"{model} Secondary {serial_suffix}",
                 via_device=(DOMAIN, host)
             )
 
