@@ -54,11 +54,16 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
     entities = []
     for node in coordinator.data:
         if node.get("role") != "1":
-            serial = node.get("serial_number") or node.get("sn")
+            serial = node.get("sn")
             device_id = (DOMAIN, serial)
-            # Link quality sensor
-            entities.append(NodeMetricSensor(coordinator, node, serial, "link_quality", "Link Quality", "dBm", device_id))
-
+            entities.append(
+                NodeMetricSensor(
+                    coordinator, node, serial,
+                    key="link_quality", name="Link Quality",
+                    unit="dBm",
+                    device_id=device_id
+                )
+            )
     async_add_entities(entities)
 
 class NodeMetricSensor(CoordinatorEntity, SensorEntity):
@@ -71,24 +76,19 @@ class NodeMetricSensor(CoordinatorEntity, SensorEntity):
         self._attr_name = name
         self._attr_native_unit_of_measurement = unit
         self._attr_unique_id = f"{serial}_{key}"
-        self._attr_device_class = None
         self._device_id = device_id
 
     @property
     def device_info(self):
-        """Return the device registry info."""
         return {"identifiers": {self._device_id}}
 
     @property
     def native_value(self):
-        """Return the current value of this sensor."""
-        nodes = self.coordinator.data
-        node = next((n for n in nodes if (n.get("serial_number") or n.get("sn")) == self._serial), {})
-        val = node.get(self._key)
-        # Convert numeric fields
+        node = next(
+            (n for n in self.coordinator.data
+             if (n.get("sn")) == self._serial), {}
+        )
         try:
-            if self._key in ("link_quality", "Uptime"):
-                return int(val)
-        except Exception:
-            pass
-        return val
+            return int(node.get(self._key, 0))
+        except ValueError:
+            return node.get(self._key)

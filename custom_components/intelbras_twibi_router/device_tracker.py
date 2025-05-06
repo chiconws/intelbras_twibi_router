@@ -22,17 +22,11 @@ from .const import (
     CONF_UPDATE_INTERVAL,
     DOMAIN,
 )
+from .utils import normalize_mac
 
 _LOGGER = logging.getLogger(__name__)
 STORAGE_KEY = f"{DOMAIN}.storage"
 STORAGE_VERSION = 1
-
-
-def normalize_mac(mac: str) -> str:
-    """Normalize MAC address to colon-separated lowercase."""
-    mac = mac.lower().replace("-", "").replace(":", "").strip()
-    return ":".join(mac[i:i+2] for i in range(0, 12, 2))
-
 
 async def async_setup_entry(hass: HomeAssistant, config_entry, async_add_entities):
     """Set up device tracker dynamically."""

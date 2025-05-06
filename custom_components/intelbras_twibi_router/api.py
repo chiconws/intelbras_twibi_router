@@ -1,12 +1,13 @@
 """API module for interacting with Twibi Router."""
 
-from datetime import datetime
 import hashlib
 import json
 import logging
 from typing import Any
 
-import aiohttp
+from aiohttp import ClientSession
+
+from .utils import get_timestamp
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -15,7 +16,12 @@ class TwibiAPI:
     """Twibi Router API class using async aiohttp."""
 
     def __init__(
-        self, twibi_ip_address: str, password: str, exclude_wired: bool, update_interval: int, session: aiohttp.ClientSession
+        self,
+        twibi_ip_address: str,
+        password: str,
+        exclude_wired: bool,
+        update_interval: int,
+        session: ClientSession,
     ) -> None:
         """Initialize the Twibi Router API."""
         self.twibi_ip_address = twibi_ip_address
@@ -27,14 +33,10 @@ class TwibiAPI:
     async def login(self) -> bool:
         """Login to router."""
         hashed_pwd = hashlib.md5(self.password.encode()).hexdigest()
-        timestamp = int(datetime.timestamp(datetime.now()) * 1000)
-        payload = {"login": {"pwd": hashed_pwd, "timestamp": timestamp}}
+        payload = {"login": {"pwd": hashed_pwd, "timestamp": get_timestamp()}}
 
         try:
-            async with self.session.post(
-                self.set_url,
-                json=payload
-            ) as response:
+            async with self.session.post(self.set_url, json=payload) as response:
                 raw_response = await response.text()
                 data = json.loads(raw_response)
 
@@ -53,28 +55,27 @@ class TwibiAPI:
         while True:
             try:
                 async with self.session.get(self.get_url + module_id) as response:
-
                     raw_response = await response.text()
 
                     return json.loads(raw_response)
             except json.JSONDecodeError:
                 await self.login()
 
-    async def get_online_list_including_wired(self) -> list:
+    async def _get_online_list_including_wired(self) -> list:
         """Retrieve the list of online devices including wired connections."""
         data = await self._get_module("online_list")
         return data.get("online_list", []) if isinstance(data, dict) else data
 
-    async def get_online_list_excluding_wired(self) -> list:
+    async def _get_online_list_excluding_wired(self) -> list:
         """Retrieve the list of online devices excluding wired connections."""
-        data = await self.get_online_list_including_wired()
+        data = await self._get_online_list_including_wired()
         return [dev for dev in data if dev.get("wifi_mode") != "--"]
 
     async def get_online_list(self) -> callable:
         """Retrieve the list of online devices based on configuration."""
         if self.exclude_wired:
-            return await self.get_online_list_excluding_wired()
-        return await self.get_online_list_including_wired()
+            return await self._get_online_list_excluding_wired()
+        return await self._get_online_list_including_wired()
 
     async def get_wan_statistics(self) -> dict:
         """Get WAN statistics from the router."""
@@ -86,9 +87,8 @@ class TwibiAPI:
         data = await self._get_module("node_info")
 
         return sorted(
-            data.get("node_info", []),
-            key=lambda n: 0 if n.get("role") == "1" else 1
-            )
+            data.get("node_info", []), key=lambda n: 0 if n.get("role") == "1" else 1
+        )
 
     @property
     def base_url(self) -> str:
