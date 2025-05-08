@@ -4,60 +4,46 @@ import logging
 
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.aiohttp_client import async_get_clientsession
-from homeassistant.helpers.update_coordinator import (
-    CoordinatorEntity,
-    DataUpdateCoordinator,
-)
+from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .api import TwibiAPI
-from .const import (
-    CONF_EXCLUDE_WIRED,
-    CONF_PASSWORD,
-    CONF_TWIBI_IP_ADDRESS,
-    CONF_UPDATE_INTERVAL,
-    DOMAIN,
-)
+from .api import APIError
+from .const import CONF_UPDATE_INTERVAL, DOMAIN
+from .coordinator import TwibiCoordinator
 
 _LOGGER = logging.getLogger(__name__)
+STORAGE_KEY = f"{DOMAIN}.storage"
+STORAGE_VERSION = 1
 
-async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
+async def async_setup_entry(hass: HomeAssistant, config_entry, async_add_entities):
     """Set up sensors for Twibi mesh nodes."""
-    host = entry.data[CONF_TWIBI_IP_ADDRESS]
-    session = async_get_clientsession(hass)
-
-    api = TwibiAPI(
-        host,
-        entry.data[CONF_PASSWORD],
-        entry.data[CONF_EXCLUDE_WIRED],
-        entry.data[CONF_UPDATE_INTERVAL],
-        session
-    )
+    entry_data = hass.data[DOMAIN][config_entry.entry_id]
+    api = entry_data['api']
 
     async def async_update_nodes():
         try:
             return await api.get_node_info()
-        except Exception:
-            _LOGGER.exception("Failed fetching node info")
+
+        except APIError as e:
+            _LOGGER.warning("API error: %s", str(e))
             return []
 
-    coordinator = DataUpdateCoordinator(
+    coordinator = TwibiCoordinator(
         hass,
         _LOGGER,
         name="twibi_node_info",
         update_method=async_update_nodes,
-        update_interval=timedelta(seconds=entry.data[CONF_UPDATE_INTERVAL]),
+        update_interval=timedelta(seconds=config_entry.data[CONF_UPDATE_INTERVAL]),
     )
 
     await coordinator.async_config_entry_first_refresh()
 
     entities = []
     for node in coordinator.data:
+        serial = node.get("sn")
         if node.get("role") != "1":
-            serial = node.get("sn")
             device_id = (DOMAIN, serial)
             entities.append(
-                NodeMetricSensor(
+                NodeLinkQuality(
                     coordinator, node, serial,
                     key="link_quality",
                     name="Link Quality",
@@ -65,24 +51,15 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
                     device_id=device_id
                 )
             )
-    async_add_entities(entities)
+    if entities:
+        async_add_entities(entities)
 
-class NodeMetricSensor(CoordinatorEntity, SensorEntity):
-    """Sensor for a specific node metric."""
+class NodeLinkQuality(CoordinatorEntity, SensorEntity):
+    """Representation of a node link quality sensor."""
 
     def __init__(self, coordinator, node, serial, key, name, unit, device_id):
-        """Initialize the node metric sensor.
+        """Initialize the sensor."""
 
-        Args:
-            coordinator: The data update coordinator.
-            node: Node information.
-            serial: Serial number of the node.
-            key: Metric key to track.
-            name: Display name of the sensor.
-            unit: Unit of measurement.
-            device_id: Unique device identifier.
-
-        """
         super().__init__(coordinator)
         self._node = node
         self._serial = serial
@@ -100,8 +77,15 @@ class NodeMetricSensor(CoordinatorEntity, SensorEntity):
 
     @property
     def native_value(self):
-        """Return the state of the sensor."""
-        return self._node.get(self._key)
+        """Return None when API is unavailable to clear the state."""
+        if not self.coordinator.last_update_success:
+            return None
+
+        current_node = next(
+            (n for n in self.coordinator.data
+             if n.get("sn") == self._serial), {}
+        )
+        return current_node.get(self._key)
 
     @property
     def icon(self) -> str | None:

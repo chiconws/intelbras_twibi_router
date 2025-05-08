@@ -5,8 +5,9 @@ import json
 import logging
 from typing import Any
 
-from aiohttp import ClientSession
+import aiohttp
 
+from .const import DEFAULT_TIMEOUT
 from .utils import get_timestamp
 
 _LOGGER = logging.getLogger(__name__)
@@ -21,7 +22,7 @@ class TwibiAPI:
         password: str,
         exclude_wired: bool,
         update_interval: int,
-        session: ClientSession,
+        session: aiohttp.ClientSession,
     ) -> None:
         """Initialize the Twibi Router API."""
         self.twibi_ip_address = twibi_ip_address
@@ -36,14 +37,19 @@ class TwibiAPI:
         payload = {"login": {"pwd": hashed_pwd, "timestamp": get_timestamp()}}
 
         try:
-            async with self.session.post(self.set_url, json=payload) as response:
+            async with self.session.post(
+                self.set_url, json=payload, timeout=DEFAULT_TIMEOUT
+            ) as response:
                 raw_response = await response.text()
                 data = json.loads(raw_response)
 
                 if data.get("errcode") == "1":
-                    raise AuthenticationError("Invalid credentials")
-
+                    raise APIError("Invalid credentials")
                 return True
+
+        except aiohttp.ClientError as e:
+            raise APIError("Connection failed") from e
+
         except json.JSONDecodeError as err:
             _LOGGER.error(
                 "Failed to parse login response: %s\nResponse: %s", err, raw_response
@@ -52,14 +58,20 @@ class TwibiAPI:
 
     async def _get_module(self, module_id: str) -> Any:
         """Call API for each module."""
-        while True:
-            try:
-                async with self.session.get(self.get_url + module_id) as response:
-                    raw_response = await response.text()
+        try:
+            async with self.session.get(
+                self.get_url + module_id, timeout=DEFAULT_TIMEOUT
+            ) as response:
+                raw_response = await response.text()
+                return json.loads(raw_response)
 
-                    return json.loads(raw_response)
-            except json.JSONDecodeError:
-                await self.login()
+        except aiohttp.ClientError as e:
+            _LOGGER.debug("Client error: %s", str(e))
+            raise APIError(f"Client error: {e!s}") from e
+
+        except json.JSONDecodeError as e:
+            _LOGGER.debug("JSON decode error: %s", str(e))
+            raise APIError("Invalid JSON response") from e
 
     async def _get_online_list_including_wired(self) -> list:
         """Retrieve the list of online devices including wired connections."""
@@ -71,7 +83,7 @@ class TwibiAPI:
         data = await self._get_online_list_including_wired()
         return [dev for dev in data if dev.get("wifi_mode") != "--"]
 
-    async def get_online_list(self) -> callable:
+    async def get_online_list(self) -> list:
         """Retrieve the list of online devices based on configuration."""
         if self.exclude_wired:
             return await self._get_online_list_excluding_wired()
@@ -87,7 +99,8 @@ class TwibiAPI:
         data = await self._get_module("node_info")
 
         return sorted(
-            data.get("node_info", []), key=lambda n: 0 if n.get("role") == "1" else 1
+            data.get("node_info", []),
+            key=lambda n: 0 if n.get("role") == "1" else 1
         )
 
     @property
@@ -105,6 +118,5 @@ class TwibiAPI:
         """Return set URL."""
         return f"{self.base_url}/set"
 
-
-class AuthenticationError(Exception):
-    """Authentication error."""
+class APIError(aiohttp.ClientError):
+    """Generic API error."""

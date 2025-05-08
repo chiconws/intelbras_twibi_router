@@ -6,22 +6,12 @@ import logging
 from homeassistant.components.device_tracker import ScannerEntity
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import device_registry as dr
-from homeassistant.helpers.aiohttp_client import async_get_clientsession
-from homeassistant.helpers.device_registry import CONNECTION_NETWORK_MAC
 from homeassistant.helpers.storage import Store
-from homeassistant.helpers.update_coordinator import (
-    CoordinatorEntity,
-    DataUpdateCoordinator,
-)
+from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .api import TwibiAPI
-from .const import (
-    CONF_EXCLUDE_WIRED,
-    CONF_PASSWORD,
-    CONF_TWIBI_IP_ADDRESS,
-    CONF_UPDATE_INTERVAL,
-    DOMAIN,
-)
+from .api import APIError
+from .const import CONF_TWIBI_IP_ADDRESS, CONF_UPDATE_INTERVAL, DOMAIN
+from .coordinator import TwibiCoordinator
 from .utils import normalize_mac
 
 _LOGGER = logging.getLogger(__name__)
@@ -31,20 +21,12 @@ STORAGE_VERSION = 1
 async def async_setup_entry(hass: HomeAssistant, config_entry, async_add_entities):
     """Set up device tracker dynamically."""
     host = config_entry.data[CONF_TWIBI_IP_ADDRESS]
-    session = async_get_clientsession(hass)
-
-    twibi = TwibiAPI(
-        host,
-        config_entry.data[CONF_PASSWORD],
-        config_entry.data[CONF_EXCLUDE_WIRED],
-        config_entry.data[CONF_UPDATE_INTERVAL],
-        session
-    )
+    entry_data = hass.data[DOMAIN][config_entry.entry_id]
+    api = entry_data['api']
 
     store = Store(hass, STORAGE_VERSION, STORAGE_KEY)
     stored_data = await store.async_load() or {}
 
-    # Normalize stored MACs
     known_macs = {
         normalize_mac(mac)
         for mac in stored_data.get(config_entry.entry_id, [])
@@ -55,7 +37,7 @@ async def async_setup_entry(hass: HomeAssistant, config_entry, async_add_entitie
     async def async_update_data():
         """Fetch latest data and update known devices."""
         try:
-            online_devices = await twibi.get_online_list()
+            online_devices = await api.get_online_list()
 
             normalized_devices = []
             for dev in online_devices:
@@ -70,15 +52,14 @@ async def async_setup_entry(hass: HomeAssistant, config_entry, async_add_entitie
                 known_macs.update(new_macs)
                 stored_data[config_entry.entry_id] = list(known_macs)
                 await store.async_save(stored_data)
-                _LOGGER.debug("Added new MACs: %s", new_macs)
 
             return {"online": normalized_devices, "known_macs": known_macs.copy()}
 
-        except Exception:
-            _LOGGER.exception("Error updating data")
+        except APIError as e:
+            _LOGGER.warning("API error: %s", str(e))
             return {"online": [], "known_macs": known_macs.copy()}
 
-    coordinator = DataUpdateCoordinator(
+    coordinator = TwibiCoordinator(
         hass,
         _LOGGER,
         name="twibi_devices",
@@ -88,14 +69,14 @@ async def async_setup_entry(hass: HomeAssistant, config_entry, async_add_entitie
 
     await coordinator.async_config_entry_first_refresh()
 
-    initial_entities = []
+    entities = []
     for mac in coordinator.data.get("known_macs", set()):
         if mac not in added_macs:
             device_info = next(
                 (dev for dev in coordinator.data.get("online", []) if dev["dev_mac"] == mac),
                 {"dev_mac": mac, "dev_name": f"Device {mac}", "dev_ip": None},
             )
-            initial_entities.append(
+            entities.append(
                 TwibiDeviceTracker(
                     coordinator,
                     host,
@@ -105,10 +86,9 @@ async def async_setup_entry(hass: HomeAssistant, config_entry, async_add_entitie
                 )
             )
             added_macs.add(mac)
-            _LOGGER.debug("Initial entity created for MAC: %s", mac)
 
-    if initial_entities:
-        async_add_entities(initial_entities)
+    if entities:
+        async_add_entities(entities)
 
     @callback
     def async_check_for_new_devices():
@@ -150,16 +130,8 @@ class TwibiDeviceTracker(CoordinatorEntity, ScannerEntity):
         device_info: dict,
         entry_id: str,
     ) -> None:
-        """Initialize the TwibiDeviceTracker.
+        """Initialize the device tracker."""
 
-        Args:
-            coordinator: The data update coordinator for managing updates.
-            host: The host address of the Twibi router.
-            mac: The MAC address of the tracked device.
-            device_info: A dictionary containing device information.
-            entry_id: Config entry ID for device registry.
-
-        """
         super().__init__(coordinator)
         self._mac = mac
         self._host = host
@@ -170,7 +142,7 @@ class TwibiDeviceTracker(CoordinatorEntity, ScannerEntity):
 
         self._attr_device_info = {
             "identifiers": {(DOMAIN, mac)},
-            "connections": {(CONNECTION_NETWORK_MAC, mac)},
+            "connections": {(dr.CONNECTION_NETWORK_MAC, mac)},
             "manufacturer": "Unknown",
             "model": "Network Device",
             "name": device_info.get("dev_name") or f"Device {mac}",
@@ -233,8 +205,3 @@ class TwibiDeviceTracker(CoordinatorEntity, ScannerEntity):
             "tx_rate": current_info.get("tx_rate"),
             "connection": "Ethernet" if connection_type == "--" else connection_type
         }
-
-    @property
-    def available(self) -> bool:
-        """Return whether the entity is available."""
-        return self.coordinator.last_update_success

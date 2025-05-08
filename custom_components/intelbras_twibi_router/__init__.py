@@ -1,11 +1,13 @@
 """Twibi Router integration."""
+import logging
+
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-from .api import TwibiAPI
+from .api import APIError, TwibiAPI
 from .const import (
     CONF_EXCLUDE_WIRED,
     CONF_PASSWORD,
@@ -21,10 +23,11 @@ PLATFORMS = [
     Platform.LIGHT,
 ]
 
+_LOGGER = logging.getLogger(__name__)
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Twibi integration from a config entry."""
     hass.data.setdefault(DOMAIN, {})
-    hass.data[DOMAIN][entry.entry_id] = entry.data
 
     host = entry.data[CONF_TWIBI_IP_ADDRESS]
 
@@ -37,9 +40,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     )
 
     try:
+        await api.login()
         nodes = await api.get_node_info()
-    except Exception:
+    except APIError as e:
+        _LOGGER.error("Failed to login or fetch nodes: %s", e)
         nodes = []
+
+    hass.data[DOMAIN][entry.entry_id] = {'api': api, 'data': entry.data}
 
     device_registry = dr.async_get(hass)
     for node in nodes:

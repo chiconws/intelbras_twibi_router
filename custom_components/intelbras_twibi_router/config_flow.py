@@ -7,12 +7,14 @@ import voluptuous as vol
 from homeassistant.config_entries import ConfigFlow
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-from .api import AuthenticationError, TwibiAPI
+from .api import APIError, TwibiAPI
 from .const import (
     CONF_EXCLUDE_WIRED,
     CONF_PASSWORD,
     CONF_TWIBI_IP_ADDRESS,
     CONF_UPDATE_INTERVAL,
+    DEFAULT_TWIBI_IP_ADDRESS,
+    DEFAULT_UPDATE_INTERVAL,
     DOMAIN,
 )
 
@@ -20,10 +22,10 @@ _LOGGER = logging.getLogger(__name__)
 
 DATA_SCHEMA = vol.Schema(
     {
-        vol.Required(CONF_TWIBI_IP_ADDRESS, default='192.168.5.1'): str,
+        vol.Required(CONF_TWIBI_IP_ADDRESS, default=DEFAULT_TWIBI_IP_ADDRESS): str,
         vol.Required(CONF_PASSWORD): str,
         vol.Optional(CONF_EXCLUDE_WIRED, default=True): bool,
-        vol.Required(CONF_UPDATE_INTERVAL, default=30): int
+        vol.Required(CONF_UPDATE_INTERVAL, default=DEFAULT_UPDATE_INTERVAL): int
     }
 )
 
@@ -47,7 +49,7 @@ class TwibiConfigFlow(ConfigFlow, domain=DOMAIN):
 
                 return self.async_create_entry(title=f"Twibi ({host})", data=user_input)
 
-            except AuthenticationError as err:
+            except APIError as err:
                 _LOGGER.error("Error connecting to Twibi: %s", err)
                 errors["base"] = "Endereço IP ou senha inválidos."
 
