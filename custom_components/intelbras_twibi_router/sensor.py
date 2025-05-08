@@ -102,3 +102,25 @@ class NodeMetricSensor(CoordinatorEntity, SensorEntity):
     def native_value(self):
         """Return the state of the sensor."""
         return self._node.get(self._key)
+
+    @property
+    def icon(self) -> str | None:
+        """Return the dynamic WiFi icon based on signal strength."""
+        if (value := self.native_value) is None:
+            return "mdi:wifi-strength-alert-outline"
+
+        try:
+            value = float(value)
+        except (TypeError, ValueError):
+            return "mdi:wifi-strength-alert-outline"
+
+        if -50 <= value <= -30:
+            return "mdi:wifi-strength-4"
+        if -60 <= value < -50:
+            return "mdi:wifi-strength-3"
+        if -70 <= value < -60:
+            return "mdi:wifi-strength-2"
+        if -80 <= value < -70:
+            return "mdi:wifi-strength-1"
+
+        return "mdi:wifi-strength-alert-outline"
