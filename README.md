@@ -41,8 +41,8 @@ Esse integração permite que você saiba quais dispositivos estão conectados n
    - Endereço IP do Twibi (Padrão: 192.168.5.1, mas o seu pode ser diferente).
    - password (senha usada para acessar o aplicativo ou a WebUI do Twibi).
    - Apenas dispositivos conectados ao Wi-Fi (ignora dispositivos conectados ao Twibi através de cabos).
-   Intervalo de Atualização (em segundos) (intervalor de atualização das informações).
-5. A integração vai procurar dispositivos conectados à rede e adicioná-los como `device` ao Home Assistant e também vai criar um `device_tracker`.
+   - Intervalo de Atualização (em segundos) (intervalo de atualização das informações).
+5. A integração vai procurar dispositivos conectados à rede e adicioná-los como `device` ao Home Assistant e também vai criar  `device_trackers`.
 
 Se o dispositivo tiver nome cadastrado no Twibi (`celular` por exemplo), será criado um `device celular` e um `device_tracker.celular`. Caso não tenha nenhum nome, a integração usará o MAC Address para criar o `device` (`device 00:12:33:A7:90:AA` por exemplo) e o IP para criar o `device_tracker` (`device_tracker.device_192_168_5_123` por exemplo).
 Você pode alterar todos esses nomes depois.
@@ -53,6 +53,7 @@ Caso tenha mais de um Twibi na sua rede, a integração criará um device para c
 ## Informações adicionais
 
 Essa é minha primeira integração, então com certeza haverão bugs. Se tiver algum problema, você pode [abrir um issue](https://github.com/chiconws/intelbras_twibi_router/issues) que talvez poderei ajudar.
+
 Criei essa integração fazendo os testes no meu próprio roteador Twibi Fast, portanto, não garanto que vá funcionar com todos os outros modelos de Twibi no mercado. Caso você tenha outro modelo e queira adicioná-lo, [abra um issue](https://github.com/chiconws/intelbras_twibi_router/issues) para conversarmos.
 
 ## License
