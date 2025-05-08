@@ -1,7 +1,4 @@
 """Config flow for Twibi Router integration."""
-
-import logging
-
 import voluptuous as vol
 
 from homeassistant.config_entries import ConfigFlow
@@ -17,8 +14,6 @@ from .const import (
     DEFAULT_UPDATE_INTERVAL,
     DOMAIN,
 )
-
-_LOGGER = logging.getLogger(__name__)
 
 DATA_SCHEMA = vol.Schema(
     {
@@ -39,7 +34,6 @@ class TwibiConfigFlow(ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             host = user_input[CONF_TWIBI_IP_ADDRESS]
             password = user_input[CONF_PASSWORD]
-            _LOGGER.debug("Connecting to Twibi at %s", host)
             session = async_get_clientsession(self.hass)
 
             try:
@@ -50,7 +44,6 @@ class TwibiConfigFlow(ConfigFlow, domain=DOMAIN):
                 return self.async_create_entry(title=f"Twibi ({host})", data=user_input)
 
             except APIError as err:
-                _LOGGER.error("Error connecting to Twibi: %s", err)
                 errors["base"] = "Endereço IP ou senha inválidos."
 
         return self.async_show_form(

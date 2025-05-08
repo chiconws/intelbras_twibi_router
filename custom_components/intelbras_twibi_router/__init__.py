@@ -1,4 +1,5 @@
 """Twibi Router integration."""
+from datetime import timedelta
 import logging
 
 from homeassistant.config_entries import ConfigEntry
@@ -16,6 +17,7 @@ from .const import (
     DOMAIN,
     MANUFACTURER,
 )
+from .coordinator import TwibiCoordinator
 
 PLATFORMS = [
     Platform.DEVICE_TRACKER,
@@ -39,16 +41,38 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         async_get_clientsession(hass)
     )
 
-    try:
-        await api.login()
-        nodes = await api.get_node_info()
-    except APIError as e:
-        _LOGGER.error("Failed to login or fetch nodes: %s", e)
-        nodes = []
+    async def async_update_data():
+        """Fetch all data from the router."""
+        try:
+            await api.login()
+            return {
+                "nodes": await api.get_node_info(),
+                "online": await api.get_online_list(),
+                "wan_stats": await api.get_wan_statistics()
+            }
+        except APIError as err:
+            _LOGGER.error("API update failed: %s", err)
+            raise
 
-    hass.data[DOMAIN][entry.entry_id] = {'api': api, 'data': entry.data}
+    coordinator = TwibiCoordinator(
+        hass,
+        _LOGGER,
+        name=f"{DOMAIN}_{host}",
+        update_method=async_update_data,
+        update_interval=timedelta(seconds=entry.data[CONF_UPDATE_INTERVAL]),
+    )
+
+    await coordinator.async_config_entry_first_refresh()
+
+    hass.data[DOMAIN][entry.entry_id] = {
+        "api": api,
+        "coordinator": coordinator,
+        "host": host
+    }
+
 
     device_registry = dr.async_get(hass)
+    nodes = coordinator.data.get("nodes", [])
     for node in nodes:
         serial = node.get("sn")
         serial_suffix = serial[-4:]
@@ -82,7 +106,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 async def async_unload_entry(hass: HomeAssistant, entry) -> bool:
     """Unload a config entry."""
-    unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
-    if unload_ok:
-        hass.data[DOMAIN].pop(entry.entry_id, None)
+    if unload_ok := await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
+        hass.data[DOMAIN].pop(entry.entry_id)
     return unload_ok

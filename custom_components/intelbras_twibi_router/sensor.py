@@ -1,44 +1,21 @@
 """Sensors for Twibi mesh node statistics."""
-from datetime import timedelta
 import logging
 
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .api import APIError
-from .const import CONF_UPDATE_INTERVAL, DOMAIN
-from .coordinator import TwibiCoordinator
+from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
-STORAGE_KEY = f"{DOMAIN}.storage"
-STORAGE_VERSION = 1
 
-async def async_setup_entry(hass: HomeAssistant, config_entry, async_add_entities):
+async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
     """Set up sensors for Twibi mesh nodes."""
-    entry_data = hass.data[DOMAIN][config_entry.entry_id]
-    api = entry_data['api']
-
-    async def async_update_nodes():
-        try:
-            return await api.get_node_info()
-
-        except APIError as e:
-            _LOGGER.warning("API error: %s", str(e))
-            return []
-
-    coordinator = TwibiCoordinator(
-        hass,
-        _LOGGER,
-        name="twibi_node_info",
-        update_method=async_update_nodes,
-        update_interval=timedelta(seconds=config_entry.data[CONF_UPDATE_INTERVAL]),
-    )
-
-    await coordinator.async_config_entry_first_refresh()
+    entry_data = hass.data[DOMAIN][entry.entry_id]
+    coordinator = entry_data["coordinator"]
 
     entities = []
-    for node in coordinator.data:
+    for node in coordinator.data["nodes"]:
         serial = node.get("sn")
         if node.get("role") != "1":
             device_id = (DOMAIN, serial)
@@ -51,8 +28,8 @@ async def async_setup_entry(hass: HomeAssistant, config_entry, async_add_entitie
                     device_id=device_id
                 )
             )
-    if entities:
-        async_add_entities(entities)
+
+    async_add_entities(entities)
 
 class NodeLinkQuality(CoordinatorEntity, SensorEntity):
     """Representation of a node link quality sensor."""
@@ -82,7 +59,7 @@ class NodeLinkQuality(CoordinatorEntity, SensorEntity):
             return None
 
         current_node = next(
-            (n for n in self.coordinator.data
+            (n for n in self.coordinator.data["nodes"]
              if n.get("sn") == self._serial), {}
         )
         return current_node.get(self._key)

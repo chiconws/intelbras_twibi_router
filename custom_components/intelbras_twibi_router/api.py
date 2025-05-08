@@ -1,17 +1,12 @@
 """API module for interacting with Twibi Router."""
-
 import hashlib
 import json
-import logging
 from typing import Any
 
 import aiohttp
 
 from .const import DEFAULT_TIMEOUT
 from .utils import get_timestamp
-
-_LOGGER = logging.getLogger(__name__)
-
 
 class TwibiAPI:
     """Twibi Router API class using async aiohttp."""
@@ -51,9 +46,6 @@ class TwibiAPI:
             raise APIError("Connection failed") from e
 
         except json.JSONDecodeError as err:
-            _LOGGER.error(
-                "Failed to parse login response: %s\nResponse: %s", err, raw_response
-            )
             raise ConnectionError("Invalid response format from router") from err
 
     async def _get_module(self, module_id: str) -> Any:
@@ -66,11 +58,9 @@ class TwibiAPI:
                 return json.loads(raw_response)
 
         except aiohttp.ClientError as e:
-            _LOGGER.debug("Client error: %s", str(e))
             raise APIError(f"Client error: {e!s}") from e
 
         except json.JSONDecodeError as e:
-            _LOGGER.debug("JSON decode error: %s", str(e))
             raise APIError("Invalid JSON response") from e
 
     async def _get_online_list_including_wired(self) -> list:

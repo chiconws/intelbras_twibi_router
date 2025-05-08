@@ -1,9 +1,5 @@
 """Coordinator for the Intelbras Twibi router integration."""
-import logging
-
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
-
-_LOGGER = logging.getLogger(__name__)
 
 class TwibiCoordinator(DataUpdateCoordinator):
     """Data update coordinator for Intelbras Twibi router."""

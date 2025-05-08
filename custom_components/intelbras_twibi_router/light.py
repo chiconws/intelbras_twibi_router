@@ -1,44 +1,25 @@
 """Light for Twibi LED control."""
-from datetime import timedelta
 import logging
 
 from homeassistant.components.light import ColorMode, LightEntity
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .api import APIError, TwibiAPI
-from .const import CONF_TWIBI_IP_ADDRESS, CONF_UPDATE_INTERVAL, DOMAIN
-from .coordinator import TwibiCoordinator
+from .api import TwibiAPI
+from .const import DOMAIN
 from .utils import get_timestamp
 
 _LOGGER = logging.getLogger(__name__)
 
-async def async_setup_entry(hass: HomeAssistant, config_entry, async_add_entities):
+async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
     """Set up LED control switch for Twibi nodes."""
-    host = config_entry.data[CONF_TWIBI_IP_ADDRESS]
-    entry_data = hass.data[DOMAIN][config_entry.entry_id]
+    entry_data = hass.data[DOMAIN][entry.entry_id]
+    coordinator = entry_data["coordinator"]
+    host = entry_data['host']
     api = entry_data['api']
 
-    async def async_update_nodes():
-        try:
-            return await api.get_node_info()
-
-        except APIError as e:
-            _LOGGER.warning("LED control error: %s", str(e))
-            return []
-
-    coordinator = TwibiCoordinator(
-        hass,
-        _LOGGER,
-        name="twibi_node_led",
-        update_method=async_update_nodes,
-        update_interval=timedelta(seconds=config_entry.data[CONF_UPDATE_INTERVAL]),
-    )
-
-    await coordinator.async_config_entry_first_refresh()
-
     entities = []
-    for node in coordinator.data:
+    for node in coordinator.data["nodes"]:
         serial = node.get("sn")
         if node.get("role") == "1":
             device_id = (DOMAIN, host)
@@ -48,8 +29,7 @@ async def async_setup_entry(hass: HomeAssistant, config_entry, async_add_entitie
             TwibiLedLight(coordinator, api, serial, device_id)
         )
 
-    if entities:
-        async_add_entities(entities)
+    async_add_entities(entities)
 
 class TwibiLedLight(CoordinatorEntity, LightEntity):
     """Representation of a Twibi LED light."""
@@ -84,7 +64,7 @@ class TwibiLedLight(CoordinatorEntity, LightEntity):
     def is_on(self) -> bool:
         """Return None instead of False when unavailable."""
         node = next(
-            (n for n in self.coordinator.data
+            (n for n in self.coordinator.data["nodes"]
              if n.get("sn") == self._serial), {}
         )
         return node.get("led") == "1"
