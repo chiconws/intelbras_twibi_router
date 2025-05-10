@@ -1,4 +1,5 @@
 """Constants for the Twibi Router integration."""
+
 import aiohttp
 
 DOMAIN = 'intelbras_twibi_router'
