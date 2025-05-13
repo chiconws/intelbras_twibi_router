@@ -15,9 +15,9 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
     coordinator = entry_data["coordinator"]
 
     entities = []
-    for node in coordinator.data["nodes"]:
-        serial = node.get("sn")
-        if node.get("role") != "1":
+    for node in coordinator.data["node_info"]:
+        serial = node["sn"]
+        if node["role"] != "1":
             device_id = (DOMAIN, serial)
             entities.append(
                 NodeLinkQuality(
@@ -46,6 +46,7 @@ class NodeLinkQuality(CoordinatorEntity, SensorEntity):
         self._attr_unique_id = f"{serial}_{key}"
         self._device_id = device_id
         self.entity_id = f"sensor.link_quality_{serial[-4:]}"
+        self._attr_entity_registry_enabled_default = False
 
     @property
     def device_info(self):
@@ -59,10 +60,10 @@ class NodeLinkQuality(CoordinatorEntity, SensorEntity):
             return None
 
         current_node = next(
-            (n for n in self.coordinator.data["nodes"]
-             if n.get("sn") == self._serial), {}
+            (n for n in self.coordinator.data["node_info"]
+             if n["sn"] == self._serial), {}
         )
-        return current_node.get(self._key)
+        return current_node[self._key]
 
     @property
     def icon(self) -> str | None:

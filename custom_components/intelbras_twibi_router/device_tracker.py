@@ -10,6 +10,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
+
 STORAGE_KEY = f"{DOMAIN}.storage"
 STORAGE_VERSION = 1
 
@@ -18,6 +19,7 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
     entry_data = hass.data[DOMAIN][entry.entry_id]
     coordinator = entry_data["coordinator"]
     host = entry_data['host']
+    api = entry_data['api']
 
     store = Store(hass, STORAGE_VERSION, STORAGE_KEY)
     stored_data = await store.async_load() or {}
@@ -25,7 +27,7 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
     known_macs = set(stored_data.get(entry.entry_id, {}))
 
     online_macs = {
-        device["dev_mac"] for device in coordinator.data["online"]
+        device["dev_mac"] for device in coordinator.data["online_list"]
     }
 
     new_macs = online_macs - known_macs
@@ -43,18 +45,19 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
     for mac in known_macs:
         if mac not in added_macs:
             device_info = next(
-                (dev for dev in coordinator.data["online"] if dev["dev_mac"] == mac),
+                (dev for dev in coordinator.data["online_list"] if dev["dev_mac"] == mac),
                 {"dev_mac": mac, "dev_name": f"Device {mac}", "dev_ip": None},
             )
-            entities.append(
-                TwibiDeviceTracker(
-                    coordinator,
-                    host,
-                    mac,
-                    device_info,
-                    entry.entry_id
-                )
-            )
+            if api.exclude_wired and device_info["wifi_mode"] == "--":
+                continue
+
+            entities.append(TwibiDeviceTracker(
+                coordinator,
+                host,
+                mac,
+                device_info,
+                entry.entry_id
+            ))
             added_macs.add(mac)
 
     async_add_entities(entities)
@@ -120,13 +123,13 @@ class TwibiDeviceTracker(CoordinatorEntity, ScannerEntity):
     @property
     def is_connected(self) -> bool:
         """Return whether the device is currently connected."""
-        return self._mac in {dev["dev_mac"] for dev in self.coordinator.data["online"]}
+        return self._mac in {dev["dev_mac"] for dev in self.coordinator.data["online_list"]}
 
     @property
     def current_info(self) -> dict:
         """Return the current device information."""
         return next(
-            (dev for dev in self.coordinator.data["online"] if dev["dev_mac"] == self._mac),
+            (dev for dev in self.coordinator.data["online_list"] if dev["dev_mac"] == self._mac),
             self._device_info,
         )
 
@@ -138,11 +141,17 @@ class TwibiDeviceTracker(CoordinatorEntity, ScannerEntity):
     @property
     def extra_state_attributes(self) -> dict:
         """Return additional state attributes for the device."""
-        connection_type = self.current_info["wifi_mode"]
-        return {
+        connection_type = (
+            "Ethernet" if self.current_info["wifi_mode"] == "--"
+            else self.current_info["wifi_mode"]
+        )
+        data = {
             "ip": self.ip_address,
             "mac": self._mac,
-            "rssi": self.current_info["rssi"],
             "tx_rate": self.current_info["tx_rate"],
-            "connection": "Ethernet" if connection_type == "--" else connection_type
+            "connection": connection_type
         }
+        if connection_type != "Ethernet":
+            data["rssi"] = self.current_info["rssi"]
+
+        return data
