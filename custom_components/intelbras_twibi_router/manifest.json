@@ -2,12 +2,11 @@
   "domain": "intelbras_twibi_router",
   "name": "Roteador Intelbras Twibi",
   "codeowners": ["@chiconws"],
-  "config_flow": true,
   "dependencies": [],
   "documentation": "https://github.com/chiconws/intelbras_twibi_router",
   "iot_class": "local_polling",
   "issue_tracker": "https://github.com/chiconws/intelbras_twibi_router/issues",
   "requirements": [],
   "single_config_entry": true,
-  "version": "1.0.1"
+  "version": "1.0.0"
 }

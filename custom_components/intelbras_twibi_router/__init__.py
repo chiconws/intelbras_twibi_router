@@ -45,15 +45,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         """Fetch all data from the router."""
         try:
             await api.login()
-            return await api.get_modules(["node_info", "online_list"])
-
+            return {
+                "nodes": await api.get_node_info(),
+                "online": await api.get_online_list(),
+                "wan_stats": await api.get_wan_statistics()
+            }
         except APIError as err:
             _LOGGER.error("API update failed: %s", err)
             raise
-
-        except Exception as err:
-            _LOGGER.error("Unexpected error: %s", err)
-            raise APIError(f"Unexpected error: {err}") from err
 
     coordinator = TwibiCoordinator(
         hass,
@@ -71,24 +70,21 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "host": host
     }
 
-    device_registry = dr.async_get(hass)
-    nodes = sorted(
-        coordinator.data["node_info"],
-        key=lambda n: 0 if n["role"] == "1" else 1
-    )
 
+    device_registry = dr.async_get(hass)
+    nodes = coordinator.data.get("nodes", [])
     for node in nodes:
-        serial = node["sn"]
+        serial = node.get("sn")
         serial_suffix = serial[-4:]
-        model = node["dut_name"]
+        model = node.get("dut_name")
         base_dr = {
             "config_entry_id": entry.entry_id,
             "manufacturer": MANUFACTURER,
             "model": f"{model} {serial}",
-            "sw_version": node["dut_version"],
-            "configuration_url": f"http://{node['ip']}",
+            "sw_version": node.get("dut_version"),
+            "configuration_url": f"http://{node.get('ip')}",
         }
-        if node["role"] == "1":
+        if node.get("role") == "1":
             primary = " " if len(nodes) == 1 else " Primary "
             device_registry.async_get_or_create(
                 **base_dr,

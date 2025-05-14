@@ -1,11 +1,15 @@
 """Light for Twibi LED control."""
+import logging
+
 from homeassistant.components.light import ColorMode, LightEntity
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .api import TwibiAPI
 from .const import DOMAIN
+from .utils import get_timestamp
 
+_LOGGER = logging.getLogger(__name__)
 
 async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
     """Set up LED control switch for Twibi nodes."""
@@ -15,9 +19,9 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
     api = entry_data['api']
 
     entities = []
-    for node in coordinator.data["node_info"]:
-        serial = node["sn"]
-        if node["role"] == "1":
+    for node in coordinator.data["nodes"]:
+        serial = node.get("sn")
+        if node.get("role") == "1":
             device_id = (DOMAIN, host)
         else:
             device_id = (DOMAIN, serial)
@@ -60,17 +64,17 @@ class TwibiLedLight(CoordinatorEntity, LightEntity):
     def is_on(self) -> bool:
         """Return None instead of False when unavailable."""
         node = next(
-            (n for n in self.coordinator.data["node_info"]
-             if n["sn"] == self._serial), {}
+            (n for n in self.coordinator.data["nodes"]
+             if n.get("sn") == self._serial), {}
         )
-        return node["led"] == "1"
+        return node.get("led") == "1"
 
     async def _async_set_led_status(self, status_led: str) -> None:
         payload = {
             "led": {
                 "led_en": status_led,
                 "sn": self._serial,
-                "timestamp": str(self._api.get_timestamp()),
+                "timestamp": str(get_timestamp()),
             }
         }
         await self._api.session.post(self._api.set_url, json=payload)
