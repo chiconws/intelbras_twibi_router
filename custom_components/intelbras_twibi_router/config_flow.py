@@ -1,6 +1,4 @@
 """Config flow for Twibi Router integration."""
-import voluptuous as vol
-
 from homeassistant.config_entries import ConfigFlow
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
@@ -10,19 +8,10 @@ from .const import (
     CONF_PASSWORD,
     CONF_TWIBI_IP_ADDRESS,
     CONF_UPDATE_INTERVAL,
-    DEFAULT_TWIBI_IP_ADDRESS,
-    DEFAULT_UPDATE_INTERVAL,
+    CONFIG_FLOW_SCHEMA,
     DOMAIN,
 )
 
-DATA_SCHEMA = vol.Schema(
-    {
-        vol.Required(CONF_TWIBI_IP_ADDRESS, default=DEFAULT_TWIBI_IP_ADDRESS): str,
-        vol.Required(CONF_PASSWORD): str,
-        vol.Optional(CONF_EXCLUDE_WIRED, default=True): bool,
-        vol.Required(CONF_UPDATE_INTERVAL, default=DEFAULT_UPDATE_INTERVAL): int
-    }
-)
 
 class TwibiConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Twibi Tracker."""
@@ -39,13 +28,12 @@ class TwibiConfigFlow(ConfigFlow, domain=DOMAIN):
             try:
                 twibi = TwibiAPI(host, password, user_input[CONF_EXCLUDE_WIRED], user_input[CONF_UPDATE_INTERVAL], session)
                 await twibi.login()
-                await twibi.get_online_list()
 
                 return self.async_create_entry(title=f"Twibi ({host})", data=user_input)
 
-            except APIError as err:
+            except APIError:
                 errors["base"] = "Endereço IP ou senha inválidos."
 
         return self.async_show_form(
-            step_id="user", data_schema=DATA_SCHEMA, errors=errors
+            step_id="user", data_schema=CONFIG_FLOW_SCHEMA, errors=errors
         )

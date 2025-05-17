@@ -1,3 +1,4 @@
+"""API responses for Intelbras Twibi Router."""
 net_link_status = {"net_link_status": [{"net_status": "3", "id": "1"}]}
 
 lan_info = {

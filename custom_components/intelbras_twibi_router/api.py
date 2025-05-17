@@ -1,12 +1,14 @@
 """API module for interacting with Twibi Router."""
+from datetime import datetime
 import hashlib
 import json
-from typing import Any
+import logging
 
 import aiohttp
 
 from .const import DEFAULT_TIMEOUT
-from .utils import get_timestamp
+
+_LOGGER = logging.getLogger(__name__)
 
 class TwibiAPI:
     """Twibi Router API class using async aiohttp."""
@@ -26,10 +28,15 @@ class TwibiAPI:
         self.update_interval = update_interval
         self.session = session
 
+    @staticmethod
+    def get_timestamp() -> str:
+        """Get current timestamp in milliseconds."""
+        return int(datetime.now().timestamp() * 1000)
+
     async def login(self) -> bool:
         """Login to router."""
         hashed_pwd = hashlib.md5(self.password.encode()).hexdigest()
-        payload = {"login": {"pwd": hashed_pwd, "timestamp": get_timestamp()}}
+        payload = {"login": {"pwd": hashed_pwd, "timestamp": self.get_timestamp()}}
 
         try:
             async with self.session.post(
@@ -38,24 +45,24 @@ class TwibiAPI:
                 raw_response = await response.text()
                 data = json.loads(raw_response)
 
-                if data.get("errcode") == "1":
+                if data["errcode"] == "1":
                     raise APIError("Invalid credentials")
                 return True
 
-        except aiohttp.ClientError as e:
-            raise APIError("Connection failed") from e
+        except aiohttp.ClientError as err:
+            raise APIError("Connection failed") from err
 
         except json.JSONDecodeError as err:
-            raise ConnectionError("Invalid response format from router") from err
+            raise APIError("Invalid response format from router") from err
 
-    async def _get_module(self, module_id: str) -> Any:
-        """Call API for each module."""
+    async def get_modules(self, module_list: list[str]):
+        """Retrieve module data from the router based on a list of module IDs."""
         try:
             async with self.session.get(
-                self.get_url + module_id, timeout=DEFAULT_TIMEOUT
+                self.get_url + ",".join(module_list), timeout=DEFAULT_TIMEOUT
             ) as response:
-                raw_response = await response.text()
-                return json.loads(raw_response)
+                data = await response.text()
+                return json.loads(data)
 
         except aiohttp.ClientError as e:
             raise APIError(f"Client error: {e!s}") from e
@@ -63,35 +70,8 @@ class TwibiAPI:
         except json.JSONDecodeError as e:
             raise APIError("Invalid JSON response") from e
 
-    async def _get_online_list_including_wired(self) -> list:
-        """Retrieve the list of online devices including wired connections."""
-        data = await self._get_module("online_list")
-        return data.get("online_list", []) if isinstance(data, dict) else data
-
-    async def _get_online_list_excluding_wired(self) -> list:
-        """Retrieve the list of online devices excluding wired connections."""
-        data = await self._get_online_list_including_wired()
-        return [dev for dev in data if dev.get("wifi_mode") != "--"]
-
-    async def get_online_list(self) -> list:
-        """Retrieve the list of online devices based on configuration."""
-        if self.exclude_wired:
-            return await self._get_online_list_excluding_wired()
-        return await self._get_online_list_including_wired()
-
-    async def get_wan_statistics(self) -> dict:
-        """Get WAN statistics from the router."""
-        data = await self._get_module("wan_statistic")
-        return data.get("wan_statistic", [{}])[0]
-
-    async def get_node_info(self) -> list:
-        """Get node information about all Twibi devices."""
-        data = await self._get_module("node_info")
-
-        return sorted(
-            data.get("node_info", []),
-            key=lambda n: 0 if n.get("role") == "1" else 1
-        )
+        except Exception as e:
+            raise APIError(f"Unexpected error: {e!s}") from e
 
     @property
     def base_url(self) -> str:

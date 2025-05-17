@@ -1,10 +1,13 @@
 """Coordinator for the Intelbras Twibi router integration."""
 import asyncio
+import logging
 
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .api import APIError
+from .const import MAIN_SCHEMA
 
+_LOGGER = logging.getLogger(__name__)
 
 class TwibiCoordinator(DataUpdateCoordinator):
     """Data update coordinator for Intelbras Twibi router."""
@@ -12,11 +15,15 @@ class TwibiCoordinator(DataUpdateCoordinator):
     async def _async_update_data(self):
         """Update data from the router with retry logic."""
         max_retries = 3
-        retry_delay = 5
+        retry_delay = 10
 
         for attempt in range(max_retries):
             try:
-                return await self.update_method()
+                data = await self.update_method()
+                _LOGGER.debug("Data fetched successfully: %s", data)
+                _LOGGER.debug("Data validation: %s", MAIN_SCHEMA(data))
+                return MAIN_SCHEMA(data)
+
             except APIError as err:
                 if attempt < max_retries - 1:
                     self.logger.warning(
