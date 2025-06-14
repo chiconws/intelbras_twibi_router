@@ -1,4 +1,5 @@
 """API module for interacting with Twibi Router."""
+
 from datetime import datetime
 import hashlib
 import json
@@ -9,6 +10,7 @@ import aiohttp
 from .const import DEFAULT_TIMEOUT
 
 _LOGGER = logging.getLogger(__name__)
+
 
 class TwibiAPI:
     """Twibi Router API class using async aiohttp."""
@@ -29,7 +31,7 @@ class TwibiAPI:
         self.session = session
 
     @staticmethod
-    def get_timestamp() -> str:
+    def get_timestamp() -> int:
         """Get current timestamp in milliseconds."""
         return int(datetime.now().timestamp() * 1000)
 
@@ -45,7 +47,7 @@ class TwibiAPI:
                 raw_response = await response.text()
                 data = json.loads(raw_response)
 
-                if data["errcode"] == "1":
+                if data.get("errcode") == "1":
                     raise APIError("Invalid credentials")
                 return True
 
@@ -87,6 +89,7 @@ class TwibiAPI:
     def set_url(self) -> str:
         """Return set URL."""
         return f"{self.base_url}/set"
+
 
 class APIError(aiohttp.ClientError):
     """Generic API error."""

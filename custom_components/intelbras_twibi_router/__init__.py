@@ -1,4 +1,5 @@
 """Twibi Router integration."""
+
 from datetime import timedelta
 import logging
 
@@ -25,7 +26,10 @@ PLATFORMS = [
     Platform.LIGHT,
 ]
 
+MODULES = ["node_info", "online_list", "wan_statistic"]
+
 _LOGGER = logging.getLogger(__name__)
+
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Twibi integration from a config entry."""
@@ -38,14 +42,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         entry.data[CONF_PASSWORD],
         entry.data[CONF_EXCLUDE_WIRED],
         entry.data[CONF_UPDATE_INTERVAL],
-        async_get_clientsession(hass)
+        async_get_clientsession(hass),
     )
 
     async def async_update_data():
         """Fetch all data from the router."""
         try:
             await api.login()
-            return await api.get_modules(["node_info", "online_list"])
+            return await api.get_modules(MODULES)
 
         except APIError as err:
             _LOGGER.error("API update failed: %s", err)
@@ -68,13 +72,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data[DOMAIN][entry.entry_id] = {
         "api": api,
         "coordinator": coordinator,
-        "host": host
+        "host": host,
     }
 
     device_registry = dr.async_get(hass)
     nodes = sorted(
-        coordinator.data["node_info"],
-        key=lambda n: 0 if n["role"] == "1" else 1
+        coordinator.data.get("node_info"),
+        key=lambda n: 0 if n.get("role") == "1" else 1,
     )
 
     for node in nodes:
@@ -93,20 +97,19 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             device_registry.async_get_or_create(
                 **base_dr,
                 identifiers={(DOMAIN, host)},
-                name=f"{model}{primary}{serial_suffix}"
+                name=f"{model}{primary}{serial_suffix}",
             )
         else:
             device_registry.async_get_or_create(
                 **base_dr,
                 identifiers={(DOMAIN, serial)},
                 name=f"{model} Secondary {serial_suffix}",
-                via_device=(DOMAIN, host)
+                via_device=(DOMAIN, host),
             )
 
-    await hass.config_entries.async_forward_entry_setups(
-        entry, PLATFORMS
-    )
+    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
+
 
 async def async_unload_entry(hass: HomeAssistant, entry) -> bool:
     """Unload a config entry."""
