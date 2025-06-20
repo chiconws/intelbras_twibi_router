@@ -74,6 +74,12 @@ class TwibiAPI:
 
         except Exception as e:
             raise APIError(f"Unexpected error: {e!s}") from e
+            
+    async def set_guest_wifi(self, enable: bool):
+        """Enable or disable Guest WiFi on the router."""
+        # This method is currently not in use as the switch functionality has been removed.
+        # It can be re-implemented if needed in the future.
+        raise NotImplementedError("Guest WiFi toggle functionality has been removed.")
 
     @property
     def base_url(self) -> str:

@@ -32,10 +32,10 @@ getupgradestatus = {"getupgradestatus": {"code": "1"}}
 
 guest_info = {
     "guest_info": {
-        "guest_en": "0",
+        "guest_en": "1",
         "guest_ssid": "Visitante",
-        "guest_pass": "12345678",
-        "guest_time": "8",
+        "guest_pass": "",
+        "guest_time": "always",
         "limit": "0",
     }
 }

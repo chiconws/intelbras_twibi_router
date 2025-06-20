@@ -51,18 +51,15 @@ def async_check_new_devices(hass, entry, async_add_entities):
     # Create entities for new devices that are in the selected devices list
     entities = []
     for mac in new_macs:
-        # Skip if the device is not in the selected devices list
-        if selected_devices and mac not in selected_devices:
+        # Only add devices that are explicitly selected
+        # If selected_devices is empty, don't add any devices
+        if not selected_devices or mac not in selected_devices:
             continue
             
         device_info = next(
             (dev for dev in coordinator.data["online_list"] if dev["dev_mac"] == mac),
             {"dev_mac": mac, "dev_name": f"Device {mac}", "dev_ip": None},
         )
-
-        # Do not skip cabled devices if they are in the selected list
-        # This ensures all selected devices get device tracker entities
-        pass
 
         entities.append(
             TwibiDeviceTracker(coordinator, host, mac, device_info, entry.entry_id)
