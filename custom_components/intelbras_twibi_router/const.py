@@ -9,6 +9,7 @@ CONF_TWIBI_IP_ADDRESS = "Endereço IP do Twibi"
 CONF_PASSWORD = "password"
 CONF_UPDATE_INTERVAL = "Intervalo de atualização (em segundos)"
 CONF_EXCLUDE_WIRED = "Apenas dispositivos conectados ao Wi-Fi"
+CONF_SELECTED_DEVICES = "Dispositivos selecionados"
 
 DEFAULT_TWIBI_IP_ADDRESS = "192.168.5.1"
 DEFAULT_UPDATE_INTERVAL = 30
@@ -16,6 +17,8 @@ DEFAULT_EXCLUDE_WIRED = True
 DEFAULT_TIMEOUT = aiohttp.ClientTimeout(total=5)
 
 MANUFACTURER = "Intelbras"
+
+MODULES = ["node_info", "online_list", "wan_statistic"]
 
 NODE_SCHEMA = vol.Schema(
     {
@@ -79,14 +82,5 @@ MAIN_SCHEMA = vol.Schema(
         vol.Required("node_info"): vol.All([NODE_SCHEMA], vol.Length(min=1)),
         vol.Required("online_list"): [ONLINE_DEVICE_SCHEMA],
         vol.Required("wan_statistic"): [WAN_STATISTIC_SCHEMA],
-    }
-)
-
-CONFIG_FLOW_SCHEMA = vol.Schema(
-    {
-        vol.Required(CONF_TWIBI_IP_ADDRESS, default=DEFAULT_TWIBI_IP_ADDRESS): str,
-        vol.Required(CONF_PASSWORD): str,
-        vol.Optional(CONF_EXCLUDE_WIRED, default=True): bool,
-        vol.Required(CONF_UPDATE_INTERVAL, default=DEFAULT_UPDATE_INTERVAL): int,
     }
 )

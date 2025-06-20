@@ -3,11 +3,12 @@
 import logging
 
 from homeassistant.components.device_tracker import ScannerEntity
+from homeassistant.components.sensor import SensorEntity
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN
+from .const import CONF_SELECTED_DEVICES, DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -44,16 +45,24 @@ def async_check_new_devices(hass, entry, async_add_entities):
     if not new_macs:
         return
 
-    # Create entities for new devices
+    # Get the list of selected devices
+    selected_devices = entry.data.get(CONF_SELECTED_DEVICES, [])
+    
+    # Create entities for new devices that are in the selected devices list
     entities = []
     for mac in new_macs:
+        # Skip if the device is not in the selected devices list
+        if selected_devices and mac not in selected_devices:
+            continue
+            
         device_info = next(
             (dev for dev in coordinator.data["online_list"] if dev["dev_mac"] == mac),
             {"dev_mac": mac, "dev_name": f"Device {mac}", "dev_ip": None},
         )
 
-        if api.exclude_wired and device_info.get("wifi_mode") == "--":
-            continue
+        # Do not skip cabled devices if they are in the selected list
+        # This ensures all selected devices get device tracker entities
+        pass
 
         entities.append(
             TwibiDeviceTracker(coordinator, host, mac, device_info, entry.entry_id)
@@ -62,6 +71,17 @@ def async_check_new_devices(hass, entry, async_add_entities):
 
     if entities:
         async_add_entities(entities)
+        
+        # Create sensor entities for each device tracker, only for WiFi devices
+        sensor_entities = []
+        for tracker in entities:
+            if tracker._device_info.get("wifi_mode") != "--":
+                sensor_entities.extend([
+                    TwibiTxRateSensor(coordinator, host, tracker._mac, tracker._device_info, entry.entry_id),
+                    TwibiRssiSensor(coordinator, host, tracker._mac, tracker._device_info, entry.entry_id)
+                ])
+        if sensor_entities:
+            async_add_entities(sensor_entities)
 
 
 class TwibiDeviceTracker(CoordinatorEntity, ScannerEntity):
@@ -162,7 +182,128 @@ class TwibiDeviceTracker(CoordinatorEntity, ScannerEntity):
         return {
             "mac": self._mac,
             "ip": self.ip_address,
-            "tx_rate": self.current_info.get("tx_rate"),
             "connection": self.connection_type,
-            "rssi": self.current_info.get("rssi", []),
         }
+        
+def get_rssi_icon(rssi_value):
+    """Return an icon based on RSSI signal strength."""
+    try:
+        rssi = int(rssi_value)
+        if rssi >= -50:
+            return "mdi:wifi-strength-4"
+        elif rssi >= -60:
+            return "mdi:wifi-strength-3"
+        elif rssi >= -70:
+            return "mdi:wifi-strength-2"
+        elif rssi >= -80:
+            return "mdi:wifi-strength-1"
+        else:
+            return "mdi:wifi-strength-outline"
+    except (ValueError, TypeError):
+        return "mdi:wifi-strength-outline"
+
+class TwibiTxRateSensor(CoordinatorEntity, SensorEntity):
+    """Representation of a Twibi device's Tx Rate sensor."""
+
+    def __init__(self, coordinator, host, mac: str, device_info: dict, entry_id: str) -> None:
+        """Initialize the Tx Rate sensor."""
+        super().__init__(coordinator)
+        self._mac = mac
+        self._host = host
+        self._entry_id = entry_id
+        self._device_info = device_info
+        self._attr_entity_category = None
+        self._attr_should_poll = False
+        self._attr_icon = "mdi:transmission-tower"
+        self._attr_native_unit_of_measurement = "Mbps"
+        self._attr_device_info = {
+            "identifiers": {(DOMAIN, mac)},
+            "connections": {(dr.CONNECTION_NETWORK_MAC, mac)},
+            "manufacturer": "Unknown",
+            "model": "Network Device",
+            "name": device_info["dev_name"] or f"Device {mac}",
+            "via_device": (DOMAIN, host),
+        }
+
+    @property
+    def unique_id(self) -> str:
+        """Return the unique ID of the sensor."""
+        return f"{self._mac}_tx_rate"
+
+    @property
+    def name(self) -> str:
+        """Return the name of the sensor."""
+        return f"{self._device_info.get('dev_name') or 'Device ' + self._mac} Tx Rate"
+
+    @property
+    def online_list(self) -> list:
+        """Return a list with the online devices."""
+        return self.coordinator.data.get("online_list", [])
+
+    @property
+    def current_info(self) -> dict:
+        """Return the current device information."""
+        return next(
+            (dev for dev in self.online_list if dev.get("dev_mac") == self._mac),
+            self._device_info,
+        )
+
+    @property
+    def native_value(self) -> str:
+        """Return the Tx Rate of the device."""
+        return self.current_info.get("tx_rate", "0")
+
+class TwibiRssiSensor(CoordinatorEntity, SensorEntity):
+    """Representation of a Twibi device's RSSI sensor."""
+
+    def __init__(self, coordinator, host, mac: str, device_info: dict, entry_id: str) -> None:
+        """Initialize the RSSI sensor."""
+        super().__init__(coordinator)
+        self._mac = mac
+        self._host = host
+        self._entry_id = entry_id
+        self._device_info = device_info
+        self._attr_entity_category = None
+        self._attr_should_poll = False
+        self._attr_native_unit_of_measurement = "dBm"
+        self._attr_device_info = {
+            "identifiers": {(DOMAIN, mac)},
+            "connections": {(dr.CONNECTION_NETWORK_MAC, mac)},
+            "manufacturer": "Unknown",
+            "model": "Network Device",
+            "name": device_info["dev_name"] or f"Device {mac}",
+            "via_device": (DOMAIN, host),
+        }
+
+    @property
+    def unique_id(self) -> str:
+        """Return the unique ID of the sensor."""
+        return f"{self._mac}_rssi"
+
+    @property
+    def name(self) -> str:
+        """Return the name of the sensor."""
+        return f"{self._device_info.get('dev_name') or 'Device ' + self._mac} RSSI"
+
+    @property
+    def online_list(self) -> list:
+        """Return a list with the online devices."""
+        return self.coordinator.data.get("online_list", [])
+
+    @property
+    def current_info(self) -> dict:
+        """Return the current device information."""
+        return next(
+            (dev for dev in self.online_list if dev.get("dev_mac") == self._mac),
+            self._device_info,
+        )
+
+    @property
+    def native_value(self) -> str:
+        """Return the RSSI value of the device."""
+        return self.current_info.get("rssi", "0")
+
+    @property
+    def icon(self) -> str:
+        """Return the icon based on RSSI signal strength."""
+        return get_rssi_icon(self.native_value)
