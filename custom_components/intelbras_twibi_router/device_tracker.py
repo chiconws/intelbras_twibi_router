@@ -73,10 +73,24 @@ def async_check_new_devices(hass, entry, async_add_entities):
         sensor_entities = []
         for tracker in entities:
             if tracker._device_info.get("wifi_mode") != "--":
-                sensor_entities.extend([
-                    TwibiTxRateSensor(coordinator, host, tracker._mac, tracker._device_info, entry.entry_id),
-                    TwibiRssiSensor(coordinator, host, tracker._mac, tracker._device_info, entry.entry_id)
-                ])
+                sensor_entities.extend(
+                    [
+                        TwibiTxRateSensor(
+                            coordinator,
+                            host,
+                            tracker._mac,
+                            tracker._device_info,
+                            entry.entry_id,
+                        ),
+                        TwibiRssiSensor(
+                            coordinator,
+                            host,
+                            tracker._mac,
+                            tracker._device_info,
+                            entry.entry_id,
+                        ),
+                    ]
+                )
         if sensor_entities:
             async_add_entities(sensor_entities)
 
@@ -181,7 +195,8 @@ class TwibiDeviceTracker(CoordinatorEntity, ScannerEntity):
             "ip": self.ip_address,
             "connection": self.connection_type,
         }
-        
+
+
 def get_rssi_icon(rssi_value):
     """Return an icon based on RSSI signal strength."""
     try:
@@ -199,10 +214,13 @@ def get_rssi_icon(rssi_value):
     except (ValueError, TypeError):
         return "mdi:wifi-strength-outline"
 
+
 class TwibiTxRateSensor(CoordinatorEntity, SensorEntity):
     """Representation of a Twibi device's Tx Rate sensor."""
 
-    def __init__(self, coordinator, host, mac: str, device_info: dict, entry_id: str) -> None:
+    def __init__(
+        self, coordinator, host, mac: str, device_info: dict, entry_id: str
+    ) -> None:
         """Initialize the Tx Rate sensor."""
         super().__init__(coordinator)
         self._mac = mac
@@ -250,10 +268,13 @@ class TwibiTxRateSensor(CoordinatorEntity, SensorEntity):
         """Return the Tx Rate of the device."""
         return self.current_info.get("tx_rate", "0")
 
+
 class TwibiRssiSensor(CoordinatorEntity, SensorEntity):
     """Representation of a Twibi device's RSSI sensor."""
 
-    def __init__(self, coordinator, host, mac: str, device_info: dict, entry_id: str) -> None:
+    def __init__(
+        self, coordinator, host, mac: str, device_info: dict, entry_id: str
+    ) -> None:
         """Initialize the RSSI sensor."""
         super().__init__(coordinator)
         self._mac = mac
