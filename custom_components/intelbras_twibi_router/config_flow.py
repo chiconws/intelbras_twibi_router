@@ -46,17 +46,17 @@ class TwibiConfigFlow(ConfigFlow, domain=DOMAIN):
 
             try:
                 self._api = TwibiAPI(
-                    host,
-                    password,
+                    host, 
+                    password, 
                     True,  # Default exclude_wired value, will be updated in the next step
-                    user_input[CONF_UPDATE_INTERVAL],
+                    user_input[CONF_UPDATE_INTERVAL], 
                     session
                 )
                 await self._api.login()
-
+                
                 # Store the user input for later
                 self._data = user_input
-
+                
                 # Proceed to the WiFi filter selection step
                 return await self.async_step_wifi_filter()
 
@@ -70,34 +70,34 @@ class TwibiConfigFlow(ConfigFlow, domain=DOMAIN):
                 vol.Required(CONF_UPDATE_INTERVAL, default=30): int,
             }
         )
-
+        
         return self.async_show_form(
             step_id="user", data_schema=schema, errors=errors
         )
-
+        
     async def async_step_wifi_filter(self, user_input=None):
         """Handle the WiFi filter selection step."""
         errors = {}
-
+        
         if user_input is not None:
             # Store the exclude_wired setting
             exclude_wired = user_input.get(CONF_EXCLUDE_WIRED, True)
             self._data[CONF_EXCLUDE_WIRED] = exclude_wired
-
+            
             # Update the API with the new exclude_wired value
             if self._api:
                 self._api.exclude_wired = exclude_wired
-
+                
             # Proceed to device selection step
             return await self.async_step_select_devices()
-
+        
         schema = vol.Schema({
             vol.Optional(
-                CONF_EXCLUDE_WIRED,
+                CONF_EXCLUDE_WIRED, 
                 default=self._data.get(CONF_EXCLUDE_WIRED, True)
             ): bool,
         })
-
+        
         return self.async_show_form(
             step_id="wifi_filter",
             data_schema=schema,
@@ -106,11 +106,11 @@ class TwibiConfigFlow(ConfigFlow, domain=DOMAIN):
                 "description": "Selecionar esta opção limitará a lista de dispositivos aos conectados via Wi-Fi."
             },
         )
-
+        
     async def async_step_select_devices(self, user_input=None):
         """Handle the device selection step."""
         errors = {}
-
+        
         if not self._devices:
             # Fetch the list of devices from the router with retry logic
             max_retries = 3
@@ -125,24 +125,24 @@ class TwibiConfigFlow(ConfigFlow, domain=DOMAIN):
                             data_schema=vol.Schema({}),
                             errors=errors,
                         )
-
+                        
                     data = await self._api.get_modules(MODULES)
                     online_devices = data.get("online_list", [])
-
+                    
                     # Filter devices based on the exclude_wired setting if enabled
                     if self._data.get(CONF_EXCLUDE_WIRED, True):
                         online_devices = [
-                            dev for dev in online_devices
+                            dev for dev in online_devices 
                             if dev.get("wifi_mode") != "--"
                         ]
-
+                    
                     # Create a list of devices for the multi-select
                     self._devices = [
                         {
                             "dev_mac": dev["dev_mac"],
                             "dev_name": dev["dev_name"] or f"Device {dev['dev_mac']}",
                             "dev_ip": dev["dev_ip"],
-                            "connection": "Ethernet" if dev.get("wifi_mode") == "--" else
+                            "connection": "Ethernet" if dev.get("wifi_mode") == "--" else 
                                          "5GHz" if dev.get("wifi_mode") == "AC" else
                                          "2.4GHz" if dev.get("wifi_mode") == "BGN" else "",
                         }
@@ -166,34 +166,34 @@ class TwibiConfigFlow(ConfigFlow, domain=DOMAIN):
                             data_schema=vol.Schema({}),
                             errors=errors,
                         )
-
+        
         if user_input is not None:
             # Store the selected devices
             selected_macs = user_input.get(CONF_SELECTED_DEVICES, [])
-
+            
             # Combine the initial data with the selected devices
             self._data[CONF_SELECTED_DEVICES] = selected_macs
-
+            
             # Create the config entry
             return self.async_create_entry(
-                title=f"Twibi ({self._data[CONF_TWIBI_IP_ADDRESS]})",
+                title=f"Twibi ({self._data[CONF_TWIBI_IP_ADDRESS]})", 
                 data=self._data
             )
-
+        
         # Create a mapping of MAC addresses to display names
         mac_to_name = {
             dev["dev_mac"]: f"{dev['dev_name']} ({dev['dev_ip']}, {dev['connection']})"
             for dev in self._devices
         }
-
+        
         # Create the schema for the form
         schema = vol.Schema({
             vol.Optional(
-                CONF_SELECTED_DEVICES,
+                CONF_SELECTED_DEVICES, 
                 default=[]  # Unchecked by default
             ): cv.multi_select(mac_to_name),
         })
-
+        
         return self.async_show_form(
             step_id="select_devices",
             data_schema=schema,
@@ -202,7 +202,7 @@ class TwibiConfigFlow(ConfigFlow, domain=DOMAIN):
                 "device_count": str(len(self._devices)),
             },
         )
-
+        
     @staticmethod
     @callback
     def async_get_options_flow(config_entry):
@@ -212,36 +212,37 @@ class TwibiConfigFlow(ConfigFlow, domain=DOMAIN):
 
 class TwibiOptionsFlow(OptionsFlow):
     """Handle options flow for the Twibi integration."""
-
+    
     def __init__(self, config_entry: ConfigEntry):
         """Initialize options flow."""
-        self.config_entry = config_entry
+        self._config_data = dict(config_entry.data)
+        self._entry = config_entry
         self._api = None
         self._devices = []
-
+        
     async def async_step_init(self, user_input=None):
         """Handle the initial step."""
         return await self.async_step_wifi_filter(user_input)
-
+        
     async def async_step_wifi_filter(self, user_input=None):
         """Handle the WiFi filter selection step in options flow."""
         errors = {}
-
+        
         if user_input is not None:
             # Store the exclude_wired setting temporarily
             exclude_wired = user_input.get(CONF_EXCLUDE_WIRED, True)
             self._temp_data = {CONF_EXCLUDE_WIRED: exclude_wired}
-
+            
             # Proceed to device selection step
             return await self.async_step_device_selection()
-
+        
         schema = vol.Schema({
             vol.Optional(
-                CONF_EXCLUDE_WIRED,
-                default=self.config_entry.data.get(CONF_EXCLUDE_WIRED, True)
+                CONF_EXCLUDE_WIRED, 
+                default=self._config_data.get(CONF_EXCLUDE_WIRED, True)
             ): bool,
         })
-
+        
         return self.async_show_form(
             step_id="wifi_filter",
             data_schema=schema,
@@ -250,23 +251,23 @@ class TwibiOptionsFlow(OptionsFlow):
                 "description": "Selecionar esta opção limitará a lista de dispositivos aos conectados via Wi-Fi."
             },
         )
-
+        
     async def async_step_device_selection(self, user_input=None):
         """Handle the device selection step."""
         errors = {}
-
+        
         if not self._devices:
             # Create API instance
             session = async_get_clientsession(self.hass)
-            exclude_wired = self._temp_data.get(CONF_EXCLUDE_WIRED, self.config_entry.data.get(CONF_EXCLUDE_WIRED, True))
+            exclude_wired = self._temp_data.get(CONF_EXCLUDE_WIRED, self._config_data.get(CONF_EXCLUDE_WIRED, True))
             self._api = TwibiAPI(
-                self.config_entry.data[CONF_TWIBI_IP_ADDRESS],
-                self.config_entry.data[CONF_PASSWORD],
+                self._config_data[CONF_TWIBI_IP_ADDRESS],
+                self._config_data[CONF_PASSWORD],
                 bool(exclude_wired),
-                self.config_entry.data[CONF_UPDATE_INTERVAL],
+                self._config_data[CONF_UPDATE_INTERVAL],
                 session
             )
-
+            
             # Fetch the list of devices from the router with retry logic
             max_retries = 3
             retry_delay = 10
@@ -280,25 +281,25 @@ class TwibiOptionsFlow(OptionsFlow):
                             data_schema=vol.Schema({}),
                             errors=errors,
                         )
-
+                        
                     await self._api.login()
                     data = await self._api.get_modules(MODULES)
                     online_devices = data.get("online_list", [])
-
+                    
                     # Filter devices based on the exclude_wired setting if enabled
-                    if self._temp_data.get(CONF_EXCLUDE_WIRED, self.config_entry.data.get(CONF_EXCLUDE_WIRED, True)):
+                    if self._temp_data.get(CONF_EXCLUDE_WIRED, self._config_data.get(CONF_EXCLUDE_WIRED, True)):
                         online_devices = [
-                            dev for dev in online_devices
+                            dev for dev in online_devices 
                             if dev.get("wifi_mode") != "--"
                         ]
-
+                    
                     # Create a list of devices for the multi-select
                     self._devices = [
                         {
                             "dev_mac": dev["dev_mac"],
                             "dev_name": dev["dev_name"] or f"Device {dev['dev_mac']}",
                             "dev_ip": dev["dev_ip"],
-                            "connection": "Ethernet" if dev.get("wifi_mode") == "--" else
+                            "connection": "Ethernet" if dev.get("wifi_mode") == "--" else 
                                          "5GHz" if dev.get("wifi_mode") == "AC" else
                                          "2.4GHz" if dev.get("wifi_mode") == "BGN" else "",
                         }
@@ -322,39 +323,39 @@ class TwibiOptionsFlow(OptionsFlow):
                             data_schema=vol.Schema({}),
                             errors=errors,
                         )
-
+        
         if user_input is not None:
             # Store the selected devices
             selected_macs = user_input.get(CONF_SELECTED_DEVICES, [])
-
+            
             # Update the config entry with both exclude_wired and selected devices
-            new_data = dict(self.config_entry.data)
+            new_data = dict(self._config_data)
             new_data[CONF_SELECTED_DEVICES] = selected_macs
             new_data[CONF_EXCLUDE_WIRED] = self._temp_data.get(CONF_EXCLUDE_WIRED, new_data.get(CONF_EXCLUDE_WIRED, True))
-
+            
             self.hass.config_entries.async_update_entry(
-                self.config_entry, data=new_data
+                self._entry, data=new_data
             )
-
+            
             return self.async_create_entry(title="", data={})
-
+        
         # Get currently selected devices
-        current_selected = self.config_entry.data.get(CONF_SELECTED_DEVICES, [])
-
+        current_selected = self._config_data.get(CONF_SELECTED_DEVICES, [])
+        
         # Create a mapping of MAC addresses to display names
         mac_to_name = {
             dev["dev_mac"]: f"{dev['dev_name']} ({dev['dev_ip']}, {dev['connection']})"
             for dev in self._devices
         }
-
+        
         # Create the schema for the form
         schema = vol.Schema({
             vol.Optional(
-                CONF_SELECTED_DEVICES,
+                CONF_SELECTED_DEVICES, 
                 default=current_selected
             ): cv.multi_select(mac_to_name),
         })
-
+        
         return self.async_show_form(
             step_id="device_selection",
             data_schema=schema,

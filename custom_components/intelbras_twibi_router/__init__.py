@@ -24,6 +24,7 @@ PLATFORMS = [
     Platform.DEVICE_TRACKER,
     Platform.SENSOR,
     Platform.LIGHT,
+    Platform.BUTTON,
 ]
 
 MODULES = ["node_info", "online_list", "wan_statistic"]
