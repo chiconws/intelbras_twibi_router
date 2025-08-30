@@ -1,7 +1,6 @@
 """Sensors for Twibi mesh node statistics and device-specific metrics."""
 
 import logging
-from typing import Any
 
 from homeassistant.components.sensor import (
     SensorDeviceClass,
@@ -48,29 +47,45 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
         ]
     )
 
-    # Initialize known MACs in coordinator if not already done
     if not hasattr(coordinator, "known_macs"):
         coordinator.known_macs = set()
 
-    # Get the list of selected devices from the config entry
     selected_devices = entry.data.get(CONF_SELECTED_DEVICES, [])
-    
-    # Add device-specific sensors for tracked devices
+
     device_sensors = []
     for device in coordinator.data.get("online_list", []):
         mac = device.get("dev_mac")
-        # Only create sensors for WiFi devices that are in the selected devices list
         if mac and device.get("wifi_mode") != "--" and (not selected_devices or mac in selected_devices):
             device_sensors.extend([
                 TwibiTxRateSensor(coordinator, host, mac, device, entry.entry_id),
                 TwibiRssiSensor(coordinator, host, mac, device, entry.entry_id)
             ])
             coordinator.known_macs.add(mac)
-    
+
     if device_sensors:
         entities.extend(device_sensors)
 
     async_add_entities(entities)
+
+def get_rssi_icon(rssi_value):
+    """Return an icon based on RSSI signal strength."""
+    try:
+        rssi = int(rssi_value)
+    except (ValueError, TypeError):
+        return "mdi:wifi-strength-outline"
+
+    thresholds = [
+        (-50, "mdi:wifi-strength-4"),
+        (-60, "mdi:wifi-strength-3"),
+        (-70, "mdi:wifi-strength-2"),
+        (-80, "mdi:wifi-strength-1"),
+    ]
+
+    for limit, icon in thresholds:
+        if rssi >= limit:
+            return icon
+
+    return "mdi:wifi-strength-outline"
 
 
 class NodeLinkQuality(CoordinatorEntity, SensorEntity):
@@ -114,24 +129,7 @@ class NodeLinkQuality(CoordinatorEntity, SensorEntity):
     @property
     def icon(self) -> str | None:
         """Return the dynamic WiFi icon based on signal strength."""
-        if (value := self.native_value) is None:
-            return "mdi:wifi-strength-alert-outline"
-
-        try:
-            value = float(value)
-        except (TypeError, ValueError):
-            return "mdi:wifi-strength-alert-outline"
-
-        if -50 <= value <= -30:
-            return "mdi:wifi-strength-4"
-        if -60 <= value < -50:
-            return "mdi:wifi-strength-3"
-        if -70 <= value < -60:
-            return "mdi:wifi-strength-2"
-        if -80 <= value < -70:
-            return "mdi:wifi-strength-1"
-
-        return "mdi:wifi-strength-alert-outline"
+        return get_rssi_icon(self.native_value)
 
 
 class SpeedSensor(CoordinatorEntity, SensorEntity):
@@ -189,25 +187,6 @@ class DownloadSpeedSensor(SpeedSensor):
             key="down_speed",
             name_suffix="Download",
         )
-
-
-def get_rssi_icon(rssi_value):
-    """Return an icon based on RSSI signal strength."""
-    try:
-        rssi = int(rssi_value)
-        if rssi >= -50:
-            return "mdi:wifi-strength-4"
-        elif rssi >= -60:
-            return "mdi:wifi-strength-3"
-        elif rssi >= -70:
-            return "mdi:wifi-strength-2"
-        elif rssi >= -80:
-            return "mdi:wifi-strength-1"
-        else:
-            return "mdi:wifi-strength-outline"
-    except (ValueError, TypeError):
-        return "mdi:wifi-strength-outline"
-
 
 class TwibiTxRateSensor(CoordinatorEntity, SensorEntity):
     """Representation of a Twibi device's Tx Rate sensor."""

@@ -3,6 +3,7 @@
 import logging
 
 from homeassistant.components.device_tracker import ScannerEntity
+from homeassistant.const import STATE_HOME, STATE_NOT_HOME
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -17,15 +18,12 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
     entry_data = hass.data[DOMAIN][entry.entry_id]
     coordinator = entry_data["coordinator"]
 
-    # Initialize known MACs in coordinator
     if not hasattr(coordinator, "known_macs"):
         coordinator.known_macs = set()
 
-    # Add listener for coordinator updates
     coordinator.async_add_listener(
         lambda: async_check_new_devices(hass, entry, async_add_entities)
     )
-    # Initial entity creation
     async_check_new_devices(hass, entry, async_add_entities)
 
 
@@ -35,26 +33,20 @@ def async_check_new_devices(hass, entry, async_add_entities):
     entry_data = hass.data[DOMAIN][entry.entry_id]
     coordinator = entry_data["coordinator"]
     host = entry_data["host"]
-    api = entry_data["api"]
 
     current_macs = {dev["dev_mac"] for dev in coordinator.data.get("online_list", [])}
 
-    # Find new MACs
     new_macs = current_macs - coordinator.known_macs
     if not new_macs:
         return
 
-    # Get the list of selected devices
     selected_devices = entry.data.get(CONF_SELECTED_DEVICES, [])
-    
-    # Create entities for new devices that are in the selected devices list
+
     entities = []
     for mac in new_macs:
-        # Only add devices that are explicitly selected
-        # If selected_devices is empty, don't add any devices
         if not selected_devices or mac not in selected_devices:
             continue
-            
+
         device_info = next(
             (dev for dev in coordinator.data["online_list"] if dev["dev_mac"] == mac),
             {"dev_mac": mac, "dev_name": f"Device {mac}", "dev_ip": None},
@@ -89,6 +81,7 @@ class TwibiDeviceTracker(CoordinatorEntity, ScannerEntity):
         self._device_info = device_info
         self._attr_entity_category = None
         self._attr_should_poll = False
+        self._last_known_online_status = False
 
         self._attr_device_info = {
             "identifiers": {(DOMAIN, mac)},
@@ -133,7 +126,23 @@ class TwibiDeviceTracker(CoordinatorEntity, ScannerEntity):
     @property
     def is_connected(self) -> bool:
         """Return whether the device is currently connected."""
-        return self._mac in {dev.get("dev_mac") for dev in self.online_list}
+        connected = self._mac in {dev.get("dev_mac") for dev in self.online_list}
+        self._last_known_online_status = connected # Update last known online status
+        return connected
+
+    @property
+    def available(self) -> bool:
+        """Return if entity is available."""
+        if self.coordinator.last_update_success:
+            return True
+        if not self._last_known_online_status:
+            return True
+        return False
+
+    @property
+    def state(self) -> str:
+        """Return the state of the device."""
+        return STATE_HOME if self.is_connected else STATE_NOT_HOME
 
     @property
     def current_info(self) -> dict:
@@ -150,6 +159,7 @@ class TwibiDeviceTracker(CoordinatorEntity, ScannerEntity):
 
     @property
     def connection_type(self) -> str:
+        """Return the connection type of the device."""
         match self.current_info.get("wifi_mode"):
             case "--":
                 return "Ethernet"

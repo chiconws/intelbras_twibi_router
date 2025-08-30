@@ -45,8 +45,8 @@ NODE_SCHEMA = vol.Schema(
         vol.Required("Uptime"): str,
         vol.Required("up_date"): str,
         vol.Required("ipv6"): str,
-        vol.Required("net_status"): vol.In(["0", "1"]),
-        vol.Required("link_status"): vol.In(["0", "1"]),
+        vol.Required("net_status"): str,
+        vol.Required("link_status"): str,
         vol.Optional("link_quality"): str,
     }
 )

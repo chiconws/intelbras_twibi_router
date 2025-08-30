@@ -57,14 +57,14 @@ class TwibiRestartButton(CoordinatorEntity, ButtonEntity):
     async def async_press(self) -> None:
         """Handle the button press - restart the router."""
         _LOGGER.info("Restarting Twibi router %s", self._host)
-        
+
         payload = {
             "sys_reboot": {
                 "action": "reboot",
                 "timestamp": str(self._api.get_timestamp()),
             }
         }
-        
+
         try:
             await self._api.session.post(self._api.set_url, json=payload)
             _LOGGER.info("Restart command sent successfully to %s", self._host)
