@@ -3,14 +3,16 @@ from __future__ import annotations
 
 import asyncio
 import logging
+
 import voluptuous as vol
 
-from homeassistant.config_entries import ConfigFlow, OptionsFlow, ConfigEntry
+from homeassistant.config_entries import ConfigEntry, ConfigFlow, OptionsFlow
 from homeassistant.core import callback
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-from .api import APIError, TwibiAPI
+from .api import APIError, AuthenticationError
+from .api_v2 import TwibiAPI
 from .const import (
     CONF_EXCLUDE_WIRED,
     CONF_PASSWORD,
@@ -29,7 +31,7 @@ class TwibiConfigFlow(ConfigFlow, domain=DOMAIN):
 
     VERSION = 1
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the config flow."""
         self._data = {}
         self._devices = []
@@ -48,18 +50,28 @@ class TwibiConfigFlow(ConfigFlow, domain=DOMAIN):
                 self._api = TwibiAPI(
                     host,
                     password,
-                    True,
+                    True,  # Default exclude_wired value, will be updated in the next step
                     user_input[CONF_UPDATE_INTERVAL],
                     session
                 )
-                await self._api.login()
 
-                self._data = user_input
+                # Test authentication
+                login_success = await self._api.login()
+                if not login_success:
+                    errors["base"] = "Endereço IP ou senha inválidos."
+                else:
+                    # Store the user input for later
+                    self._data = user_input
 
-                return await self.async_step_wifi_filter()
+                    # Proceed to the WiFi filter selection step
+                    return await self.async_step_wifi_filter()
 
-            except APIError:
+            except APIError as err:
+                _LOGGER.error("API Error during login: %s", err)
                 errors["base"] = "Endereço IP ou senha inválidos."
+            except Exception as err:
+                _LOGGER.error("Unexpected error during login: %s", err)
+                errors["base"] = "Erro inesperado. Verifique os logs."
 
         schema = vol.Schema(
             {
@@ -78,12 +90,15 @@ class TwibiConfigFlow(ConfigFlow, domain=DOMAIN):
         errors = {}
 
         if user_input is not None:
+            # Store the exclude_wired setting
             exclude_wired = user_input.get(CONF_EXCLUDE_WIRED, True)
             self._data[CONF_EXCLUDE_WIRED] = exclude_wired
 
+            # Update the API with the new exclude_wired value
             if self._api:
                 self._api.exclude_wired = exclude_wired
 
+            # Proceed to device selection step
             return await self.async_step_select_devices()
 
         schema = vol.Schema({
@@ -107,6 +122,7 @@ class TwibiConfigFlow(ConfigFlow, domain=DOMAIN):
         errors = {}
 
         if not self._devices:
+            # Fetch the list of devices from the router with retry logic
             max_retries = 3
             retry_delay = 10
             errors["base"] = ""
@@ -123,12 +139,14 @@ class TwibiConfigFlow(ConfigFlow, domain=DOMAIN):
                     data = await self._api.get_modules(MODULES)
                     online_devices = data.get("online_list", [])
 
+                    # Filter devices based on the exclude_wired setting if enabled
                     if self._data.get(CONF_EXCLUDE_WIRED, True):
                         online_devices = [
                             dev for dev in online_devices
                             if dev.get("wifi_mode") != "--"
                         ]
 
+                    # Create a list of devices for the multi-select
                     self._devices = [
                         {
                             "dev_mac": dev["dev_mac"],
@@ -140,10 +158,27 @@ class TwibiConfigFlow(ConfigFlow, domain=DOMAIN):
                         }
                         for dev in online_devices
                     ]
-                    break
+                    break  # Success, exit retry loop
+                except AuthenticationError as ex:
+                    _LOGGER.warning(
+                        "Authentication error fetching devices (attempt %d/%d): %s Retrying",
+                        attempt + 1,
+                        max_retries,
+                        ex
+                    )
+                    if attempt < max_retries - 1:
+                        await asyncio.sleep(retry_delay)
+                    else:
+                        _LOGGER.error("Authentication failed after %d attempts: %s", max_retries, ex)
+                        errors["base"] = "O roteador está instável. Aguarde alguns minutos e tente novamente. Se o problema persistir, reinicie o roteador."
+                        return self.async_show_form(
+                            step_id="select_devices",
+                            data_schema=vol.Schema({}),
+                            errors=errors,
+                        )
                 except Exception as ex:
                     _LOGGER.warning(
-                        "Error fetching devices (attempt %d/%d): %s. Retrying...",
+                        "Error fetching devices (attempt %d/%d): %s. Retrying",
                         attempt + 1,
                         max_retries,
                         ex
@@ -160,24 +195,29 @@ class TwibiConfigFlow(ConfigFlow, domain=DOMAIN):
                         )
 
         if user_input is not None:
+            # Store the selected devices
             selected_macs = user_input.get(CONF_SELECTED_DEVICES, [])
 
+            # Combine the initial data with the selected devices
             self._data[CONF_SELECTED_DEVICES] = selected_macs
 
+            # Create the config entry
             return self.async_create_entry(
                 title=f"Twibi ({self._data[CONF_TWIBI_IP_ADDRESS]})",
                 data=self._data
             )
 
+        # Create a mapping of MAC addresses to display names
         mac_to_name = {
             dev["dev_mac"]: f"{dev['dev_name']} ({dev['dev_ip']}, {dev['connection']})"
             for dev in self._devices
         }
 
+        # Create the schema for the form
         schema = vol.Schema({
             vol.Optional(
                 CONF_SELECTED_DEVICES,
-                default=[]
+                default=[]  # Unchecked by default
             ): cv.multi_select(mac_to_name),
         })
 
@@ -200,7 +240,7 @@ class TwibiConfigFlow(ConfigFlow, domain=DOMAIN):
 class TwibiOptionsFlow(OptionsFlow):
     """Handle options flow for the Twibi integration."""
 
-    def __init__(self, config_entry: ConfigEntry):
+    def __init__(self, config_entry: ConfigEntry) -> None:
         """Initialize options flow."""
         self._config_data = dict(config_entry.data)
         self._entry = config_entry
@@ -216,9 +256,11 @@ class TwibiOptionsFlow(OptionsFlow):
         errors = {}
 
         if user_input is not None:
+            # Store the exclude_wired setting temporarily
             exclude_wired = user_input.get(CONF_EXCLUDE_WIRED, True)
             self._temp_data = {CONF_EXCLUDE_WIRED: exclude_wired}
 
+            # Proceed to device selection step
             return await self.async_step_device_selection()
 
         schema = vol.Schema({
@@ -242,6 +284,7 @@ class TwibiOptionsFlow(OptionsFlow):
         errors = {}
 
         if not self._devices:
+            # Create API instance
             session = async_get_clientsession(self.hass)
             exclude_wired = self._temp_data.get(CONF_EXCLUDE_WIRED, self._config_data.get(CONF_EXCLUDE_WIRED, True))
             self._api = TwibiAPI(
@@ -252,6 +295,7 @@ class TwibiOptionsFlow(OptionsFlow):
                 session
             )
 
+            # Fetch the list of devices from the router with retry logic
             max_retries = 3
             retry_delay = 10
             errors["base"] = ""
@@ -269,12 +313,14 @@ class TwibiOptionsFlow(OptionsFlow):
                     data = await self._api.get_modules(MODULES)
                     online_devices = data.get("online_list", [])
 
+                    # Filter devices based on the exclude_wired setting if enabled
                     if self._temp_data.get(CONF_EXCLUDE_WIRED, self._config_data.get(CONF_EXCLUDE_WIRED, True)):
                         online_devices = [
                             dev for dev in online_devices
                             if dev.get("wifi_mode") != "--"
                         ]
 
+                    # Create a list of devices for the multi-select
                     self._devices = [
                         {
                             "dev_mac": dev["dev_mac"],
@@ -286,10 +332,10 @@ class TwibiOptionsFlow(OptionsFlow):
                         }
                         for dev in online_devices
                     ]
-                    break
+                    break  # Success, exit retry loop
                 except Exception as ex:
                     _LOGGER.warning(
-                        "Error fetching devices (attempt %d/%d): %s. Retrying...",
+                        "Error fetching devices (attempt %d/%d): %s. Retrying",
                         attempt + 1,
                         max_retries,
                         ex
@@ -306,8 +352,10 @@ class TwibiOptionsFlow(OptionsFlow):
                         )
 
         if user_input is not None:
+            # Store the selected devices
             selected_macs = user_input.get(CONF_SELECTED_DEVICES, [])
 
+            # Update the config entry with both exclude_wired and selected devices
             new_data = dict(self._config_data)
             new_data[CONF_SELECTED_DEVICES] = selected_macs
             new_data[CONF_EXCLUDE_WIRED] = self._temp_data.get(CONF_EXCLUDE_WIRED, new_data.get(CONF_EXCLUDE_WIRED, True))
@@ -318,13 +366,16 @@ class TwibiOptionsFlow(OptionsFlow):
 
             return self.async_create_entry(title="", data={})
 
+        # Get currently selected devices
         current_selected = self._config_data.get(CONF_SELECTED_DEVICES, [])
 
+        # Create a mapping of MAC addresses to display names
         mac_to_name = {
             dev["dev_mac"]: f"{dev['dev_name']} ({dev['dev_ip']}, {dev['connection']})"
             for dev in self._devices
         }
 
+        # Create the schema for the form
         schema = vol.Schema({
             vol.Optional(
                 CONF_SELECTED_DEVICES,

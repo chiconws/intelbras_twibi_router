@@ -1,61 +1,143 @@
-# Intelbras Roteador Twibi Integração para Home Assistant
+# Integração Intelbras Twibi Router para Home Assistant
 
 ![image](https://brands.home-assistant.io/intelbras_twibi_router/logo.png)
 
-Esse integração permite que você saiba quais dispositivos estão conectados na sua rede, podendo usar isso para saber quem está em casa ou não, além de outras informações sobre o roteador.
+Essa integração conecta o seu roteador mesh **Intelbras Twibi** ao Home Assistant, permitindo monitorar e controlar sua rede: saber quais dispositivos estão conectados, automatizar presença de pessoas, controlar LEDs, gerenciar a rede de convidados e muito mais.
 
-## Features
+---
 
-- Saiba se seus dispositivos estão online ou offline na sua rede
-- Ative a localização de dispositivos apenas Wi-Fi ou todos os dispositivos
-- Ligue ou desligue o Status LED que fica na frente do roteador
-- Obtenha informações sobre o roteador como número serial ou versão do firmware, inclusive se tiver mais de um roteador na mesma rede
+## ✨ Funcionalidades
 
-## Instalação
+### 📊 Sensores
+
+- Status da rede (conectado/desconectado)  
+- Quantidade de dispositivos conectados  
+- Velocidade de upload/download da internet (WAN)  
+- Tempo de atividade do roteador (uptime)  
+- Número de série  
+- Qualidade do link (dBm) para roteadores secundários  
+- Informações da LAN e da WAN  
+- Versão do firmware e status de atualização  
+- QR Code da rede WiFi principal  
+- QR Code da rede de convidados  
+
+### 🔌 Rastreadores de Dispositivos
+
+- Detecção automática de todos os dispositivos conectados  
+- Status de presença (em casa/fora)  
+- Informações detalhadas (MAC, IP, 2.4GHz/5GHz/Ethernet)  
+- Mantém estado de “ausente” mesmo após reinício do roteador  
+
+### 💡 Luzes
+
+- Controle do LED de status de cada roteador  
+
+### 🔘 Botões
+
+- Reiniciar roteadores remotamente  
+
+### 🔄 Interruptores
+
+- Ativar/desativar o WiFi de convidados  
+
+---
+
+## 🛠️ Instalação
 
 ### HACS (Recomendado)
 
-1. Tenha certeza que o [HACS](https://hacs.xyz/) está instalado no seu Home Assistant.
-2. Adicione este repositório ao HACS como um "custom repository":
-   - HACS > Integrations
-   - Clique nos 3 pontos no canto superior direito da tela e selecione "Custom repositories"
-   - Enter `https://github.com/chiconws/intelbras_twibi_router` no campo repositório
-   - Selecione a categoria "Integration"
-   - Clique em Add
-
-3. Procure pelo Roteador Intelbras Twibi na HACS store e instale-o.
-4. Reinicie o Home Assistant.
+1. Certifique-se de que o [HACS](https://hacs.xyz/) está instalado.  
+2. No HACS, adicione este repositório como *Custom Repository*:  
+   - HACS → Integrações → ⋮ → *Custom repositories*  
+   - Cole: `https://github.com/chiconws/intelbras_twibi_router`  
+   - Categoria: *Integration* → Add  
+3. Procure por **Intelbras Twibi Router** na HACS store e instale.  
+4. Reinicie o Home Assistant.  
 
 ### Instalação Manual
 
-1. Baixe o último release do [repositório](https://github.com/chiconws/intelbras_twibi_router).
-2. Descompacte-o e copie a pasta `custom_components/intelbras_twibi_router` e cole na pasta `custom_components` no seu Home Assistant.
-3. Reinicie o Home Assistant.
+1. Baixe o último release no [GitHub](https://github.com/chiconws/intelbras_twibi_router).  
+2. Extraia e copie a pasta `custom_components/intelbras_twibi_router` para dentro da pasta `custom_components` no Home Assistant.  
+3. Reinicie o Home Assistant.  
 
-## Configuração
+---
 
-1. Vá a Configurações > Dispositivos & Serviços.
-2. Clique em "+ ADICIONAR INTEGRAÇÃO".
-3. Procure por "Roteador Intelbras Twibi" e selecione.
-4. Siga os passos da configuração:
-   - Endereço IP do Twibi (Padrão: 192.168.5.1, mas o seu pode ser diferente).
-   - password (senha usada para acessar o aplicativo ou a WebUI do Twibi).
-   - Apenas dispositivos conectados ao Wi-Fi (ignora dispositivos conectados ao Twibi através de cabos).
-   - Intervalo de Atualização (em segundos) (intervalo de atualização das informações).
-5. A integração vai procurar dispositivos conectados à rede e adicioná-los como `device` ao Home Assistant e também vai criar  `device_trackers`.
+## ⚙️ Configuração
 
-Se o dispositivo tiver nome cadastrado no Twibi (`celular` por exemplo), será criado um `device celular` e um `device_tracker.celular`. Caso não tenha nenhum nome, a integração usará o MAC Address para criar o `device` (`device 00:12:33:A7:90:AA` por exemplo) e o IP para criar o `device_tracker` (`device_tracker.device_192_168_5_123` por exemplo).
-Você pode alterar todos esses nomes depois.
+1. Vá em **Configurações → Dispositivos & Serviços**.  
+2. Clique em **+ Adicionar Integração**.  
+3. Procure por **Intelbras Twibi Router**.  
+4. Informe:  
+   - **Endereço IP** (padrão: `192.168.5.1`)
+   - **Usuário e Senha** (credenciais do administrador)
+   - Se deseja rastrear apenas dispositivos Wi-Fi ou todos
+   - Intervalo de atualização (segundos)
 
-A integração também adicionará o próprio roteador Twibi como `device`. Você vai poder ver todos os `devices` conectados à ele e outras informações como número de serial, versão do firmware e ligar ou desligar o LED do roteador.
-Caso tenha mais de um Twibi na sua rede, a integração criará um device para cada um. O que estiver conectado à internet via cabo será nomeado como "Primary" e os outros serão nomeados "Secondary". Os Twibi secundários têm um sensor de qualidade do link de Wi-Fi. O ícone desse sensor muda de acordo com a força do sinal.
+A integração criará automaticamente:
 
-## Informações adicionais
+- Dispositivos (`device`) para cada Twibi detectado (Primary/Secondary)  
+- Rastreadores (`device_tracker`) para cada dispositivo conectado  
+- Sensores, luzes, botões e switches correspondentes  
 
-Essa é minha primeira integração, então com certeza haverão bugs. Se tiver algum problema, você pode [abrir um issue](https://github.com/chiconws/intelbras_twibi_router/issues) que talvez poderei ajudar.
+Se um dispositivo tiver nome configurado no Twibi, ele será usado. Caso contrário, será usado o **MAC** ou o **IP**. Esses nomes podem ser alterados no Home Assistant.  
 
-Criei essa integração fazendo os testes no meu próprio roteador Twibi Fast, portanto, não garanto que vá funcionar com todos os outros modelos de Twibi no mercado. Caso você tenha outro modelo e queira adicioná-lo, [abra um issue](https://github.com/chiconws/intelbras_twibi_router/issues) para conversarmos.
+---
 
-## License
+## 📡 Suporte a Múltiplos Roteadores
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+- Detecta automaticamente roteadores em rede mesh  
+- Diferencia cada um pelo número de série (últimos 4 caracteres)  
+- Roteadores secundários incluem sensor de qualidade do link
+
+---
+
+## 📱 WiFi QR Codes
+
+- `sensor.wifi_qr_code` – Rede principal  
+- `sensor.guest_wifi_qr_code` – Rede de convidados  
+
+Use com cartões de exibição de QR Code para facilitar o acesso de visitantes.  
+
+---
+
+## 🔄 Reinício Automático do Roteador
+
+- Detecta reinícios programados (ex: 03h30)  
+- Aumenta tentativas de reconexão durante esse período  
+- Mantém estados de dispositivos em cache para reduzir falhas  
+
+---
+
+## 🧩 Exemplos de Entidades
+
+### Sensores
+
+- `sensor.uptime_827q` – Uptime do roteador principal  
+- `sensor.link_quality_7178` – Sinal do roteador secundário  
+- `sensor.connected_devices` – Total de dispositivos conectados  
+
+### Rastreadores
+
+- `device_tracker.celular_jose` – Smartphone do José  
+- `device_tracker.laptop_escritorio` – Notebook do escritório  
+
+### Controles
+
+- `light.status_led_827q` – LED do roteador principal  
+- `switch.guest_network` – Ativar/desativar WiFi de convidados  
+- `button.restart_router` – Reiniciar roteador  
+
+---
+
+## 🛠️ Solução de Problemas
+
+- **Falha de autenticação** → Verifique usuário/senha  
+- **Timeout de conexão** → Confirme o IP do roteador  
+- **Entidades indisponíveis** → Aguarde alguns minutos (roteador pode estar reiniciando)  
+
+Ative debug logs em `configuration.yaml`:  
+
+```yaml
+logger:
+  logs:
+    custom_components.intelbras_twibi_router: debug

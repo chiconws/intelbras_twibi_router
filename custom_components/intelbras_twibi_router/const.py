@@ -47,7 +47,7 @@ NODE_SCHEMA = vol.Schema(
         vol.Required("ipv6"): str,
         vol.Required("net_status"): str,
         vol.Required("link_status"): str,
-        vol.Optional("link_quality"): str,
+        vol.Optional("link_quality"): vol.Any(str, int, type(None)),
     }
 )
 
@@ -60,7 +60,7 @@ ONLINE_DEVICE_SCHEMA = vol.Schema(
         vol.Required("upload_speed"): str,
         vol.Required("connect_time"): str,
         vol.Required("sn"): str,
-        vol.Optional("link_type"): str,
+        vol.Optional("link_type"): vol.Any(str, type(None)),
         vol.Required("rssi"): str,
         vol.Required("tx_rate"): str,
         vol.Required("wifi_mode"): str,
@@ -82,5 +82,21 @@ MAIN_SCHEMA = vol.Schema(
         vol.Required("node_info"): vol.All([NODE_SCHEMA], vol.Length(min=1)),
         vol.Required("online_list"): [ONLINE_DEVICE_SCHEMA],
         vol.Required("wan_statistic"): [WAN_STATISTIC_SCHEMA],
-    }
+        # Optional new data fields - allow any structure for flexibility
+        vol.Optional("wan_info"): vol.Any(list, dict, type(None)),
+        vol.Optional("lan_info"): vol.Any(dict, type(None)),
+        vol.Optional("wifi"): vol.Any(dict, type(None)),
+        vol.Optional("guest_info"): vol.Any(dict, type(None)),
+        vol.Optional("getversion"): vol.Any(dict, type(None)),
+        vol.Optional("upnp_info"): vol.Any(dict, type(None)),
+        vol.Optional("remote_web"): vol.Any(dict, type(None)),
+        vol.Optional("static_ip"): vol.Any(list, type(None)),
+        vol.Optional("net_link_status"): vol.Any(list, type(None)),
+        vol.Optional("link_module"): vol.Any(list, type(None)),
+        vol.Optional("port_list"): vol.Any(dict, type(None)),
+        vol.Optional("dns_conf"): vol.Any(dict, type(None)),
+        vol.Optional("tr069_info"): vol.Any(dict, type(None)),
+        vol.Optional("mac_clone"): vol.Any(list, type(None)),
+    },
+    extra=vol.ALLOW_EXTRA,  # Allow any additional fields from the API
 )

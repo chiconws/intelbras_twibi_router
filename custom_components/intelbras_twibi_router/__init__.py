@@ -9,7 +9,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-from .api import APIError, TwibiAPI
+from .api_v2 import TwibiAPI
 from .const import (
     CONF_EXCLUDE_WIRED,
     CONF_PASSWORD,
@@ -18,13 +18,14 @@ from .const import (
     DOMAIN,
     MANUFACTURER,
 )
-from .coordinator import TwibiCoordinator
+from .coordinator_v2 import TwibiCoordinator
 
 PLATFORMS = [
-    Platform.DEVICE_TRACKER,
-    Platform.SENSOR,
-    Platform.LIGHT,
     Platform.BUTTON,
+    Platform.DEVICE_TRACKER,
+    Platform.LIGHT,
+    Platform.SENSOR,
+    Platform.SWITCH,
 ]
 
 MODULES = ["node_info", "online_list", "wan_statistic"]
@@ -46,25 +47,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         async_get_clientsession(hass),
     )
 
-    async def async_update_data():
-        """Fetch all data from the router."""
-        try:
-            await api.login()
-            return await api.get_modules(MODULES)
-
-        except APIError as err:
-            _LOGGER.error("API update failed: %s", err)
-            raise
-
-        except Exception as err:
-            _LOGGER.error("Unexpected error: %s", err)
-            raise APIError(f"Unexpected error: {err}") from err
-
     coordinator = TwibiCoordinator(
         hass,
         _LOGGER,
         name=f"{DOMAIN}_{host}",
-        update_method=async_update_data,
+        api=api,
         update_interval=timedelta(seconds=entry.data[CONF_UPDATE_INTERVAL]),
     )
 
@@ -94,11 +81,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             "configuration_url": f"http://{node['ip']}",
         }
         if node["role"] == "1":
-            primary = " " if len(nodes) == 1 else " Primary "
             device_registry.async_get_or_create(
                 **base_dr,
                 identifiers={(DOMAIN, host)},
-                name=f"{model}{primary}{serial_suffix}",
+                name=f"{model} Primary {serial_suffix}",
             )
         else:
             device_registry.async_get_or_create(

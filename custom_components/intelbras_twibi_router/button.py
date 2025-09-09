@@ -6,7 +6,7 @@ from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .api import TwibiAPI
+from .api_v2 import TwibiAPI
 from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
@@ -37,7 +37,7 @@ class TwibiRestartButton(CoordinatorEntity, ButtonEntity):
         api: TwibiAPI,
         host: str,
         device_id: tuple,
-    ):
+    ) -> None:
         """Initialize the restart button."""
         super().__init__(coordinator)
         self._api = api
@@ -57,16 +57,4 @@ class TwibiRestartButton(CoordinatorEntity, ButtonEntity):
     async def async_press(self) -> None:
         """Handle the button press - restart the router."""
         _LOGGER.info("Restarting Twibi router %s", self._host)
-
-        payload = {
-            "sys_reboot": {
-                "action": "reboot",
-                "timestamp": str(self._api.get_timestamp()),
-            }
-        }
-
-        try:
-            await self._api.session.post(self._api.set_url, json=payload)
-            _LOGGER.info("Restart command sent successfully to %s", self._host)
-        except Exception as e:
-            _LOGGER.error("Failed to restart router: %s", e)
+        await self.coordinator.async_restart_router()

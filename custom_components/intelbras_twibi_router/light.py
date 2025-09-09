@@ -3,7 +3,7 @@ from homeassistant.components.light import ColorMode, LightEntity
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .api import TwibiAPI
+from .api_v2 import TwibiAPI
 from .const import DOMAIN
 
 
@@ -36,7 +36,7 @@ class TwibiLedLight(CoordinatorEntity, LightEntity):
         api: TwibiAPI,
         serial: str,
         device_id: tuple,
-    ):
+    ) -> None:
         """Initialize the Twibi LED light."""
 
         super().__init__(coordinator)
@@ -65,22 +65,10 @@ class TwibiLedLight(CoordinatorEntity, LightEntity):
         )
         return node["led"] == "1"
 
-    async def _async_set_led_status(self, status_led: str) -> None:
-        payload = {
-            "led": {
-                "led_en": status_led,
-                "sn": self._serial,
-                "timestamp": str(self._api.get_timestamp()),
-            }
-        }
-        await self._api.session.post(self._api.set_url, json=payload)
-
-        await self.coordinator.async_refresh()
-
     async def async_turn_on(self) -> None:
         """Turn on the LED for the Twibi node."""
-        await self._async_set_led_status("1")
+        await self.coordinator.async_set_led_status(self._serial, True)
 
     async def async_turn_off(self) -> None:
         """Turn off the LED for the Twibi node."""
-        await self._async_set_led_status("0")
+        await self.coordinator.async_set_led_status(self._serial, False)
