@@ -10,7 +10,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
-from .coordinator_v2 import TwibiCoordinator
+from .coordinator import TwibiCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -93,82 +93,84 @@ class TwibiGuestNetworkSwitch(TwibiBaseSwitch):
 
         return {
             "ssid": guest_info.get("guest_ssid", ""),
-            "password": password if password else "NO PASSWORD",
+            "password_set": bool(password),
             "time_restriction": guest_info.get("guest_time", ""),
             "bandwidth_limit": "No limit" if bandwidth_limit == "0" else bandwidth_limit,
         }
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn on guest network."""
-        try:
-            api = self.coordinator.hass.data[DOMAIN][self.coordinator.config_entry.entry_id]["api"]
+        api = self.coordinator.hass.data[DOMAIN][self.coordinator.config_entry.entry_id]["api"]
 
-            # Get current guest network settings to preserve SSID and password
-            guest_info = self.coordinator.data.get("guest_info", {})
-            current_ssid = guest_info.get("guest_ssid", "")
-            current_password = guest_info.get("guest_pass", "")
-            current_time = guest_info.get("guest_time", "always")
-            current_limit = guest_info.get("limit", "0")
+        guest_info = self.coordinator.data.get("guest_info", {})
+        current_ssid = guest_info.get("guest_ssid", "")
+        current_password = guest_info.get("guest_pass", "")
+        current_time = guest_info.get("guest_time", "always")
+        current_limit = guest_info.get("limit", "0")
 
-            _LOGGER.info("Guest WiFi turn ON - Current settings: SSID='%s', Password='%s', Time='%s', Limit='%s'",
-                        current_ssid, "***" if current_password else "None", current_time, current_limit)
+        _LOGGER.info(
+            "Guest WiFi turn ON - Current settings: SSID='%s', Password='%s', Time='%s', Limit='%s'",
+            current_ssid,
+            "***" if current_password else "None",
+            current_time,
+            current_limit,
+        )
 
-            success = await api.set_guest_network(
-                enabled=True,
-                ssid=current_ssid if current_ssid else None,
-                password=current_password if current_password else None,
-                time_restriction=current_time,
-                bandwidth_limit=current_limit
-            )
+        success = await api.set_guest_network(
+            enabled=True,
+            ssid=current_ssid if current_ssid else None,
+            password=current_password if current_password else None,
+            time_restriction=current_time,
+            bandwidth_limit=current_limit,
+        )
 
-            _LOGGER.info("Guest WiFi turn ON - API call result: %s", success)
+        _LOGGER.info("Guest WiFi turn ON - API call result: %s", success)
 
-            if success:
-                await self.coordinator.async_refresh()
-                # Check if the change was applied
-                new_guest_info = self.coordinator.data.get("guest_info", {})
-                new_enabled = new_guest_info.get("guest_en", "0") == "1"
-                _LOGGER.info("Guest WiFi turn ON - After refresh, enabled state: %s", new_enabled)
-            else:
-                _LOGGER.error("Failed to enable guest network")
-        except Exception as err:
-            _LOGGER.error("Error enabling guest network: %s", err)
+        if not success:
+            _LOGGER.error("Failed to enable guest network")
+            return
+
+        await self.coordinator.async_refresh()
+        new_guest_info = self.coordinator.data.get("guest_info", {})
+        new_enabled = new_guest_info.get("guest_en", "0") == "1"
+        _LOGGER.info("Guest WiFi turn ON - After refresh, enabled state: %s", new_enabled)
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn off guest network."""
-        try:
-            api = self.coordinator.hass.data[DOMAIN][self.coordinator.config_entry.entry_id]["api"]
+        api = self.coordinator.hass.data[DOMAIN][self.coordinator.config_entry.entry_id]["api"]
 
-            # Get current guest network settings to preserve SSID and password
-            guest_info = self.coordinator.data.get("guest_info", {})
-            current_ssid = guest_info.get("guest_ssid", "")
-            current_password = guest_info.get("guest_pass", "")
-            current_time = guest_info.get("guest_time", "always")
-            current_limit = guest_info.get("limit", "0")
+        guest_info = self.coordinator.data.get("guest_info", {})
+        current_ssid = guest_info.get("guest_ssid", "")
+        current_password = guest_info.get("guest_pass", "")
+        current_time = guest_info.get("guest_time", "always")
+        current_limit = guest_info.get("limit", "0")
 
-            _LOGGER.info("Guest WiFi turn OFF - Current settings: SSID='%s', Password='%s', Time='%s', Limit='%s'",
-                        current_ssid, "***" if current_password else "None", current_time, current_limit)
+        _LOGGER.info(
+            "Guest WiFi turn OFF - Current settings: SSID='%s', Password='%s', Time='%s', Limit='%s'",
+            current_ssid,
+            "***" if current_password else "None",
+            current_time,
+            current_limit,
+        )
 
-            success = await api.set_guest_network(
-                enabled=False,
-                ssid=current_ssid if current_ssid else None,
-                password=current_password if current_password else None,
-                time_restriction=current_time,
-                bandwidth_limit=current_limit
-            )
+        success = await api.set_guest_network(
+            enabled=False,
+            ssid=current_ssid if current_ssid else None,
+            password=current_password if current_password else None,
+            time_restriction=current_time,
+            bandwidth_limit=current_limit,
+        )
 
-            _LOGGER.info("Guest WiFi turn OFF - API call result: %s", success)
+        _LOGGER.info("Guest WiFi turn OFF - API call result: %s", success)
 
-            if success:
-                await self.coordinator.async_refresh()
-                # Check if the change was applied
-                new_guest_info = self.coordinator.data.get("guest_info", {})
-                new_enabled = new_guest_info.get("guest_en", "0") == "1"
-                _LOGGER.info("Guest WiFi turn OFF - After refresh, enabled state: %s", new_enabled)
-            else:
-                _LOGGER.error("Failed to disable guest network")
-        except Exception as err:
-            _LOGGER.error("Error disabling guest network: %s", err)
+        if not success:
+            _LOGGER.error("Failed to disable guest network")
+            return
+
+        await self.coordinator.async_refresh()
+        new_guest_info = self.coordinator.data.get("guest_info", {})
+        new_enabled = new_guest_info.get("guest_en", "0") == "1"
+        _LOGGER.info("Guest WiFi turn OFF - After refresh, enabled state: %s", new_enabled)
 
 
 class TwibiUpnpSwitch(TwibiBaseSwitch):
@@ -187,24 +189,20 @@ class TwibiUpnpSwitch(TwibiBaseSwitch):
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn on UPnP."""
-        try:
-            api = self.coordinator.hass.data[DOMAIN][self.coordinator.config_entry.entry_id]["api"]
-            success = await api.set_upnp(enabled=True)
-            if success:
-                await self.coordinator.async_refresh()
-            else:
-                _LOGGER.error("Failed to enable UPnP")
-        except Exception as err:
-            _LOGGER.error("Error enabling UPnP: %s", err)
+        api = self.coordinator.hass.data[DOMAIN][self.coordinator.config_entry.entry_id]["api"]
+        success = await api.set_upnp(enabled=True)
+        if not success:
+            _LOGGER.error("Failed to enable UPnP")
+            return
+
+        await self.coordinator.async_refresh()
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn off UPnP."""
-        try:
-            api = self.coordinator.hass.data[DOMAIN][self.coordinator.config_entry.entry_id]["api"]
-            success = await api.set_upnp(enabled=False)
-            if success:
-                await self.coordinator.async_refresh()
-            else:
-                _LOGGER.error("Failed to disable UPnP")
-        except Exception as err:
-            _LOGGER.error("Error disabling UPnP: %s", err)
+        api = self.coordinator.hass.data[DOMAIN][self.coordinator.config_entry.entry_id]["api"]
+        success = await api.set_upnp(enabled=False)
+        if not success:
+            _LOGGER.error("Failed to disable UPnP")
+            return
+
+        await self.coordinator.async_refresh()
