@@ -5,10 +5,10 @@ import logging
 from homeassistant.components.device_tracker import ScannerEntity
 from homeassistant.const import STATE_HOME, STATE_NOT_HOME
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import device_registry as dr, entity_registry as er
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import CONF_SELECTED_DEVICES, DOMAIN
+from .const import CONF_SELECTED_DEVICES, CONF_TRACK_ALL_DEVICES, DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -38,35 +38,45 @@ def async_check_new_devices(hass: HomeAssistant, entry, async_add_entities):
     host = entry_data["host"]
 
     online_devices = coordinator.data.get("online_list", [])
-    current_macs = {dev["dev_mac"] for dev in online_devices}
+    online_by_mac = {dev["dev_mac"]: dev for dev in online_devices}
+    current_macs = set(online_by_mac)
+    registered_macs = _get_registered_tracker_macs(hass, entry.entry_id)
+    selected_devices = entry.data.get(CONF_SELECTED_DEVICES, [])
+    track_all_devices = entry.data.get(
+        CONF_TRACK_ALL_DEVICES,
+        not selected_devices,
+    )
+
+    if track_all_devices:
+        desired_macs = current_macs | registered_macs
+    else:
+        desired_macs = set(selected_devices or [])
 
     _LOGGER.debug("Found %d online devices: %s", len(online_devices), [f"{dev.get('dev_name', 'Unknown')} ({dev.get('dev_mac')})" for dev in online_devices])
     _LOGGER.debug("Current MACs: %s", current_macs)
+    _LOGGER.debug("Registered MACs: %s", registered_macs)
     _LOGGER.debug("Known MACs: %s", coordinator.known_macs)
 
-    # Find new MACs
-    new_macs = current_macs - coordinator.known_macs
+    # Find new MACs that should exist as entities, even when currently offline.
+    new_macs = desired_macs - coordinator.known_macs
     _LOGGER.debug("New MACs to process: %s", new_macs)
 
     if not new_macs:
         _LOGGER.debug("No new devices to add")
         return
 
-    # Get the list of selected devices
-    selected_devices = entry.data.get(CONF_SELECTED_DEVICES, [])
-
     # Create entities for new devices
     entities = []
-    for mac in new_macs:
-        # If selected_devices is configured and not empty, only add selected devices
-        # If selected_devices is empty or not configured, add all devices
-        if selected_devices and mac not in selected_devices:
-            _LOGGER.debug("Skipping device %s - not in selected devices list", mac)
-            continue
-
-        device_info = next(
-            (dev for dev in coordinator.data["online_list"] if dev["dev_mac"] == mac),
-            {"dev_mac": mac, "dev_name": f"Device {mac}", "dev_ip": None},
+    stored_names = _get_registered_tracker_names(hass, entry.entry_id)
+    for mac in sorted(new_macs):
+        device_info = online_by_mac.get(
+            mac,
+            {
+                "dev_mac": mac,
+                "dev_name": stored_names.get(mac) or f"Device {mac}",
+                "dev_ip": None,
+                "wifi_mode": None,
+            },
         )
 
         _LOGGER.debug("Creating device tracker for MAC: %s, Name: %s", mac, device_info.get("dev_name", "Unknown"))
@@ -78,6 +88,40 @@ def async_check_new_devices(hass: HomeAssistant, entry, async_add_entities):
 
     if entities:
         async_add_entities(entities)
+
+
+@callback
+def _get_registered_tracker_macs(hass: HomeAssistant, entry_id: str) -> set[str]:
+    """Return MACs for tracker entities already stored in the entity registry."""
+    registry = er.async_get(hass)
+    return {
+        entity_entry.unique_id
+        for entity_entry in er.async_entries_for_config_entry(registry, entry_id)
+        if entity_entry.platform == DOMAIN
+        and entity_entry.domain == "device_tracker"
+        and entity_entry.unique_id
+    }
+
+
+@callback
+def _get_registered_tracker_names(hass: HomeAssistant, entry_id: str) -> dict[str, str]:
+    """Return stored names for known network devices keyed by MAC."""
+    registry = dr.async_get(hass)
+    stored_names: dict[str, str] = {}
+
+    for device_entry in dr.async_entries_for_config_entry(registry, entry_id):
+        mac = next(
+            (
+                value
+                for connection_type, value in device_entry.connections
+                if connection_type == dr.CONNECTION_NETWORK_MAC
+            ),
+            None,
+        )
+        if mac:
+            stored_names[mac] = device_entry.name_by_user or device_entry.name or ""
+
+    return stored_names
 
 
 class TwibiDeviceTracker(CoordinatorEntity, ScannerEntity):

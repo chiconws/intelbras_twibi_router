@@ -3,7 +3,7 @@ from homeassistant.components.light import ColorMode, LightEntity
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .api_v2 import TwibiAPI
+from .twibi_api import TwibiAPI
 from .const import DOMAIN
 
 
@@ -63,7 +63,7 @@ class TwibiLedLight(CoordinatorEntity, LightEntity):
             (n for n in self.coordinator.data["node_info"]
              if n["sn"] == self._serial), {}
         )
-        return node["led"] == "1"
+        return node.get("led") == "1"
 
     async def async_turn_on(self) -> None:
         """Turn on the LED for the Twibi node."""

@@ -10,6 +10,7 @@ CONF_PASSWORD = "password"
 CONF_UPDATE_INTERVAL = "Intervalo de atualização (em segundos)"
 CONF_EXCLUDE_WIRED = "Apenas dispositivos conectados ao Wi-Fi"
 CONF_SELECTED_DEVICES = "Dispositivos selecionados"
+CONF_TRACK_ALL_DEVICES = "_track_all_devices"
 
 DEFAULT_TWIBI_IP_ADDRESS = "192.168.5.1"
 DEFAULT_UPDATE_INTERVAL = 30

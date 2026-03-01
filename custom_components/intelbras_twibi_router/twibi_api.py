@@ -6,6 +6,7 @@ from typing import Any
 import aiohttp
 
 from .api import APIError, TwibiConnection, TwibiController, TwibiDataFetcher
+from .api.models import AuthenticationResult, CommandResult
 from .const import DEFAULT_TIMEOUT
 
 _LOGGER = logging.getLogger(__name__)
@@ -25,12 +26,12 @@ class TwibiAPI:
     ) -> None:
         """Initialize the Twibi Router API."""
         self.host = host
-        self.exclude_wired = exclude_wired
+        self._exclude_wired = exclude_wired
         self.update_interval = update_interval
 
         # Initialize the new API components
         self._connection = TwibiConnection(host, password, session, timeout)
-        self._data_fetcher = TwibiDataFetcher(self._connection, exclude_wired)
+        self._data_fetcher = TwibiDataFetcher(self._connection, self._exclude_wired)
         self._controller = TwibiController(self._connection)
 
     @property
@@ -44,19 +45,34 @@ class TwibiAPI:
         return self._data_fetcher
 
     @property
+    def exclude_wired(self) -> bool:
+        """Return whether wired devices are excluded."""
+        return self._exclude_wired
+
+    @exclude_wired.setter
+    def exclude_wired(self, value: bool) -> None:
+        """Update the wired-device filter in both API and fetcher state."""
+        self._exclude_wired = value
+        self._data_fetcher.exclude_wired = value
+
+    @property
     def controller(self) -> TwibiController:
         """Get the controller."""
         return self._controller
 
     # Backward compatibility methods
+    async def login_result(self) -> AuthenticationResult:
+        """Login to router and return a typed result."""
+        return await self._connection.authenticate()
+
     async def login(self) -> bool:
         """Login to router (backward compatibility)."""
         try:
-            await self._connection.ensure_authenticated()
+            result = await self.login_result()
         except Exception:
             return False
 
-        return True
+        return result.authenticated
 
     async def get_modules(self, module_list: list[str]) -> dict[str, Any]:
         """Retrieve module data from the router (backward compatibility)."""
@@ -119,9 +135,17 @@ class TwibiAPI:
         """Set LED status for a node."""
         return await self._controller.set_led_status(serial, enabled)
 
+    async def set_led_status_result(self, serial: str, enabled: bool) -> CommandResult:
+        """Set LED status for a node and return a typed result."""
+        return await self._controller.set_led_status_result(serial, enabled)
+
     async def restart_router(self) -> bool:
         """Restart the router."""
         return await self._controller.restart_router()
+
+    async def restart_router_result(self) -> CommandResult:
+        """Restart the router and return a typed result."""
+        return await self._controller.restart_router_result()
 
     async def set_wifi_config(
         self,
@@ -133,6 +157,21 @@ class TwibiAPI:
         """Set WiFi configuration."""
         return await self._controller.set_wifi_config(
             ssid, password, security_type, security_mode
+        )
+
+    async def set_wifi_config_result(
+        self,
+        ssid: str,
+        password: str,
+        security_type: str = "aes",
+        security_mode: str = "psk psk2",
+    ) -> CommandResult:
+        """Set WiFi configuration and return a typed result."""
+        return await self._controller.set_wifi_config_result(
+            ssid,
+            password,
+            security_type,
+            security_mode,
         )
 
     async def set_guest_network(
@@ -148,9 +187,30 @@ class TwibiAPI:
             enabled, ssid, password, time_restriction, bandwidth_limit
         )
 
+    async def set_guest_network_result(
+        self,
+        enabled: bool,
+        ssid: str | None = None,
+        password: str | None = None,
+        time_restriction: str = "always",
+        bandwidth_limit: str = "0",
+    ) -> CommandResult:
+        """Configure guest network and return a typed result."""
+        return await self._controller.set_guest_network_result(
+            enabled,
+            ssid,
+            password,
+            time_restriction,
+            bandwidth_limit,
+        )
+
     async def set_upnp(self, enabled: bool) -> bool:
         """Enable or disable UPnP."""
         return await self._controller.set_upnp_status(enabled)
+
+    async def set_upnp_result(self, enabled: bool) -> CommandResult:
+        """Enable or disable UPnP and return a typed result."""
+        return await self._controller.set_upnp_status_result(enabled)
 
     async def get_device_by_mac(self, mac: str) -> dict[str, Any] | None:
         """Get specific device by MAC address."""
