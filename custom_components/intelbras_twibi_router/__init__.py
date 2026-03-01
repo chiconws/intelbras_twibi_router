@@ -9,8 +9,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-from .coordinator import TwibiCoordinator
-from .twibi_api import TwibiAPI
+from .api_v2 import TwibiAPI
 from .const import (
     CONF_EXCLUDE_WIRED,
     CONF_PASSWORD,
@@ -19,6 +18,7 @@ from .const import (
     DOMAIN,
     MANUFACTURER,
 )
+from .coordinator_v2 import TwibiCoordinator
 
 PLATFORMS = [
     Platform.BUTTON,
@@ -50,7 +50,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     coordinator = TwibiCoordinator(
         hass,
         _LOGGER,
-        config_entry=entry,
         name=f"{DOMAIN}_{host}",
         api=api,
         update_interval=timedelta(seconds=entry.data[CONF_UPDATE_INTERVAL]),
@@ -79,11 +78,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             "manufacturer": MANUFACTURER,
             "model": f"{model} {serial}",
             "sw_version": node["dut_version"],
+            "configuration_url": f"http://{node['ip']}",
         }
-        node_ip = (node.get("ip") or "").strip()
-        if node_ip:
-            base_dr["configuration_url"] = f"http://{node_ip}"
-
         if node["role"] == "1":
             device_registry.async_get_or_create(
                 **base_dr,

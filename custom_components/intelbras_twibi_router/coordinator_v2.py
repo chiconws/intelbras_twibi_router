@@ -5,13 +5,12 @@ from datetime import timedelta
 import logging
 from typing import Any
 
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .api import APIError, AuthenticationError, ConnectionError as TwibiConnectionError
+from .api_v2 import TwibiAPI
 from .const import MAIN_SCHEMA
-from .twibi_api import TwibiAPI
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -23,7 +22,6 @@ class TwibiCoordinator(DataUpdateCoordinator):
         self,
         hass: HomeAssistant,
         logger,
-        config_entry: ConfigEntry,
         name: str,
         api: TwibiAPI,
         update_interval: timedelta,
@@ -31,13 +29,7 @@ class TwibiCoordinator(DataUpdateCoordinator):
         base_retry_delay: int = 5,
     ) -> None:
         """Initialize the coordinator."""
-        super().__init__(
-            hass,
-            logger,
-            config_entry=config_entry,
-            name=name,
-            update_interval=update_interval,
-        )
+        super().__init__(hass, logger, name=name, update_interval=update_interval)
         self.api = api
         self.max_retries = max_retries
         self.base_retry_delay = base_retry_delay

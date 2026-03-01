@@ -17,7 +17,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
 
 from .const import DOMAIN
-from .coordinator import TwibiCoordinator
+from .coordinator_v2 import TwibiCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 

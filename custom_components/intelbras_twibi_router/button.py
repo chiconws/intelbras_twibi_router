@@ -6,7 +6,7 @@ from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .twibi_api import TwibiAPI
+from .api_v2 import TwibiAPI
 from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)

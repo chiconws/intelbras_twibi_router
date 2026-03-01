@@ -4,64 +4,6 @@ from dataclasses import dataclass
 from typing import Any
 
 
-@dataclass(frozen=True)
-class AuthenticationResult:
-    """Represents the outcome of an authentication attempt."""
-
-    authenticated: bool
-    errcode: str | None = None
-    raw: dict[str, Any] | None = None
-
-    @classmethod
-    def from_response(cls, data: dict[str, Any]) -> "AuthenticationResult":
-        """Build an authentication result from a router response."""
-        errcode = data.get("errcode")
-        errcode_str = None if errcode is None else str(errcode)
-        return cls(
-            authenticated=errcode_str != "1",
-            errcode=errcode_str,
-            raw=data,
-        )
-
-
-@dataclass(frozen=True)
-class CommandResult:
-    """Represents the outcome of a command sent to the router."""
-
-    command: str
-    success: bool
-    errcode: str | None = None
-    detail: str | None = None
-    raw: dict[str, Any] | None = None
-
-    @classmethod
-    def from_response(cls, command: str, data: dict[str, Any]) -> "CommandResult":
-        """Build a command result from a router response."""
-        errcode = data.get("errcode")
-        errcode_str = None if errcode is None else str(errcode)
-        return cls(
-            command=command,
-            success=errcode_str in (None, "0"),
-            errcode=errcode_str,
-            raw=data,
-        )
-
-    @classmethod
-    def from_error(cls, command: str, detail: str) -> "CommandResult":
-        """Build a failed command result from a local error."""
-        return cls(command=command, success=False, detail=detail)
-
-    @property
-    def rejected_by_router(self) -> bool:
-        """Return True when the router explicitly rejected the command."""
-        return not self.success and self.errcode not in (None, "0")
-
-    @property
-    def failed_locally(self) -> bool:
-        """Return True when the failure happened before a valid router reply."""
-        return not self.success and self.errcode is None
-
-
 @dataclass
 class NodeInfo:
     """Represents a Twibi router node."""

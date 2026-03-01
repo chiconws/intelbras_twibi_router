@@ -10,7 +10,6 @@ from typing import Any
 import aiohttp
 
 from ..const import DEFAULT_TIMEOUT
-from .models import AuthenticationResult, CommandResult
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -53,23 +52,17 @@ class TwibiConnection:
         """Get current timestamp in milliseconds."""
         return int(datetime.now().timestamp() * 1000)
 
-    async def authenticate(self) -> AuthenticationResult:
-        """Authenticate with the router and return a typed result."""
+    async def ensure_authenticated(self) -> None:
+        """Ensure the connection is authenticated, login if necessary."""
         if self._authenticated:
-            return AuthenticationResult(authenticated=True)
+            return
 
         async with self._auth_lock:
             if self._authenticated:
-                return AuthenticationResult(authenticated=True)
-            return await self._login()
+                return
+            await self._login()
 
-    async def ensure_authenticated(self) -> None:
-        """Ensure the connection is authenticated, login if necessary."""
-        result = await self.authenticate()
-        if not result.authenticated:
-            raise AuthenticationError("Invalid credentials")
-
-    async def _login(self) -> AuthenticationResult:
+    async def _login(self) -> None:
         """Perform login authentication."""
         hashed_pwd = hashlib.md5(self._password.encode()).hexdigest()
         payload = {
@@ -84,19 +77,18 @@ class TwibiConnection:
                 self.set_url, json=payload, timeout=self.timeout
             ) as response:
                 raw_response = await response.text()
-                data = self._decode_json_response(raw_response, reset_auth_on_html=True)
-                result = AuthenticationResult.from_response(data)
-                if not result.authenticated:
-                    self._authenticated = False
-                    return result
+                data = json.loads(raw_response)
+
+                if data.get("errcode") == "1":
+                    raise AuthenticationError("Invalid credentials")
 
                 self._authenticated = True
                 _LOGGER.debug("Successfully authenticated to Twibi router at %s", self.host)
-                return result
 
         except aiohttp.ClientError as err:
-            self._authenticated = False
             raise ConnectionError("Failed to connect to router") from err
+        except json.JSONDecodeError as err:
+            raise APIError("Invalid response format from router") from err
 
     async def get_data(self, modules: list[str]) -> dict[str, Any]:
         """Fetch data from specified modules."""
@@ -113,57 +105,45 @@ class TwibiConnection:
                 if not raw_data.strip():
                     raise APIError("Empty response from router")
 
-                return self._decode_json_response(raw_data, reset_auth_on_html=True)
+                try:
+                    return json.loads(raw_data)
+                except json.JSONDecodeError as json_err:
+                    # Check if we got an HTML login page instead of JSON
+                    if raw_data.strip().lower().startswith('<!doctype html') or '<html' in raw_data.lower():
+                        _LOGGER.warning("Router returned HTML login page instead of JSON data")
+                        # Reset authentication state
+                        self._authenticated = False
+                        raise AuthenticationError("Router session expired or authentication failed - got login page") from None
+
+                    _LOGGER.error("JSON decode error. Raw response: %s", raw_data)
+                    raise APIError(f"Invalid JSON response from router: {json_err}") from json_err
 
         except aiohttp.ClientError as err:
             # Reset authentication on connection errors
             self._authenticated = False
             raise ConnectionError(f"Failed to fetch data: {err}") from err
 
-    async def send_command(self, payload: dict[str, Any]) -> CommandResult:
+    async def send_command(self, payload: dict[str, Any]) -> dict[str, Any]:
         """Send a command to the router."""
         await self.ensure_authenticated()
-        command = next(iter(payload), "unknown")
 
         try:
             async with self.session.post(
                 self.set_url, json=payload, timeout=self.timeout
             ) as response:
                 raw_response = await response.text()
-                data = self._decode_json_response(raw_response, reset_auth_on_html=True)
-                return CommandResult.from_response(command, data)
+                return json.loads(raw_response)
 
         except aiohttp.ClientError as err:
             # Reset authentication on connection errors
             self._authenticated = False
             raise ConnectionError(f"Failed to send command: {err}") from err
+        except json.JSONDecodeError as err:
+            raise APIError("Invalid JSON response from router") from err
 
     def invalidate_auth(self) -> None:
         """Invalidate current authentication state."""
         self._authenticated = False
-
-    def _decode_json_response(
-        self,
-        raw_response: str,
-        *,
-        reset_auth_on_html: bool,
-    ) -> dict[str, Any]:
-        """Decode a router response and handle HTML auth redirects."""
-        try:
-            return json.loads(raw_response)
-        except json.JSONDecodeError as err:
-            if (
-                raw_response.strip().lower().startswith("<!doctype html")
-                or "<html" in raw_response.lower()
-            ):
-                if reset_auth_on_html:
-                    self._authenticated = False
-                raise AuthenticationError(
-                    "Router session expired or authentication failed - got login page"
-                ) from None
-
-            _LOGGER.error("JSON decode error. Raw response: %s", raw_response)
-            raise APIError(f"Invalid JSON response from router: {err}") from err
 
 
 class APIError(Exception):

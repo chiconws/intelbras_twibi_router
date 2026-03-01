@@ -1,10 +1,8 @@
 """Controller for Twibi Router device actions."""
 
 import logging
-from typing import Any
 
-from .connection import APIError, TwibiConnection
-from .models import CommandResult
+from .connection import TwibiConnection
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -16,30 +14,8 @@ class TwibiController:
         """Initialize the controller."""
         self.connection = connection
 
-    async def _execute_command(
-        self,
-        action: str,
-        payload: dict[str, Any],
-    ) -> CommandResult:
-        """Send a command and return a typed result."""
-        try:
-            result = await self.connection.send_command(payload)
-        except APIError as err:
-            _LOGGER.error("Failed to %s: %s", action, err)
-            return CommandResult.from_error(next(iter(payload), "unknown"), str(err))
-
-        if result.rejected_by_router:
-            _LOGGER.error(
-                "Router rejected %s command (%s): %s",
-                action,
-                result.errcode,
-                result.raw,
-            )
-
-        return result
-
-    async def set_led_status_result(self, serial: str, enabled: bool) -> CommandResult:
-        """Set LED status for a specific node and return a typed result."""
+    async def set_led_status(self, serial: str, enabled: bool) -> bool:
+        """Set LED status for a specific node."""
         payload = {
             "led": {
                 "led_en": "1" if enabled else "0",
@@ -48,18 +24,17 @@ class TwibiController:
             }
         }
 
-        result = await self._execute_command(f"set LED status for {serial}", payload)
-        if result.success:
+        try:
+            await self.connection.send_command(payload)
             _LOGGER.debug("LED status set for %s: %s", serial, enabled)
-        return result
+        except Exception as err:
+            _LOGGER.error("Failed to set LED status for %s: %s", serial, err)
+            return False
 
-    async def set_led_status(self, serial: str, enabled: bool) -> bool:
-        """Set LED status for a specific node."""
-        result = await self.set_led_status_result(serial, enabled)
-        return result.success
+        return True
 
-    async def restart_router_result(self) -> CommandResult:
-        """Restart the router and return a typed result."""
+    async def restart_router(self) -> bool:
+        """Restart the router."""
         payload = {
             "sys_reboot": {
                 "action": "reboot",
@@ -67,24 +42,23 @@ class TwibiController:
             }
         }
 
-        result = await self._execute_command("restart router", payload)
-        if result.success:
+        try:
+            await self.connection.send_command(payload)
             _LOGGER.info("Router restart command sent successfully")
-        return result
+        except Exception as err:
+            _LOGGER.error("Failed to restart router: %s", err)
+            return False
 
-    async def restart_router(self) -> bool:
-        """Restart the router."""
-        result = await self.restart_router_result()
-        return result.success
+        return True
 
-    async def set_wifi_config_result(
+    async def set_wifi_config(
         self,
         ssid: str,
         password: str,
         security_type: str = "aes",
-        security_mode: str = "psk psk2",
-    ) -> CommandResult:
-        """Set WiFi configuration and return a typed result."""
+        security_mode: str = "psk psk2"
+    ) -> bool:
+        """Set WiFi configuration."""
         payload = {
             "wifi": {
                 "ssid": ssid,
@@ -95,36 +69,24 @@ class TwibiController:
             }
         }
 
-        result = await self._execute_command("set WiFi configuration", payload)
-        if result.success:
+        try:
+            await self.connection.send_command(payload)
             _LOGGER.debug("WiFi configuration updated")
-        return result
+        except Exception as err:
+            _LOGGER.error("Failed to set WiFi configuration: %s", err)
+            return False
 
-    async def set_wifi_config(
-        self,
-        ssid: str,
-        password: str,
-        security_type: str = "aes",
-        security_mode: str = "psk psk2"
-    ) -> bool:
-        """Set WiFi configuration."""
-        result = await self.set_wifi_config_result(
-            ssid,
-            password,
-            security_type,
-            security_mode,
-        )
-        return result.success
+        return True
 
-    async def set_guest_network_result(
+    async def set_guest_network(
         self,
         enabled: bool,
         ssid: str | None = None,
         password: str | None = None,
         time_restriction: str = "always",
-        bandwidth_limit: str = "0",
-    ) -> CommandResult:
-        """Configure guest network settings and return a typed result."""
+        bandwidth_limit: str = "0"
+    ) -> bool:
+        """Configure guest network settings."""
         payload = {
             "guest_info": {
                 "guest_en": "1" if enabled else "0",
@@ -139,39 +101,19 @@ class TwibiController:
         payload["guest_info"]["guest_ssid"] = ssid if ssid else ""
         payload["guest_info"]["guest_pass"] = password if password else ""
 
-        _LOGGER.info(
-            "Guest network API payload: %s",
-            {
-                key: "***" if key == "guest_pass" else value
-                for key, value in payload["guest_info"].items()
-            },
-        )
+        _LOGGER.info("Guest network API payload: %s", {k: "***" if k == "guest_pass" else v for k, v in payload["guest_info"].items()})
 
-        result = await self._execute_command("set guest network", payload)
-        if result.success:
+        try:
+            await self.connection.send_command(payload)
             _LOGGER.info("Guest network configuration command sent successfully")
-        return result
+        except Exception as err:
+            _LOGGER.error("Failed to set guest network configuration: %s", err)
+            return False
 
-    async def set_guest_network(
-        self,
-        enabled: bool,
-        ssid: str | None = None,
-        password: str | None = None,
-        time_restriction: str = "always",
-        bandwidth_limit: str = "0"
-    ) -> bool:
-        """Configure guest network settings."""
-        result = await self.set_guest_network_result(
-            enabled,
-            ssid,
-            password,
-            time_restriction,
-            bandwidth_limit,
-        )
-        return result.success
+        return True
 
-    async def set_upnp_status_result(self, enabled: bool) -> CommandResult:
-        """Enable or disable UPnP and return a typed result."""
+    async def set_upnp_status(self, enabled: bool) -> bool:
+        """Enable or disable UPnP."""
         payload = {
             "upnp_info": {
                 "upnp_en": "1" if enabled else "0",
@@ -179,12 +121,11 @@ class TwibiController:
             }
         }
 
-        result = await self._execute_command("set UPnP status", payload)
-        if result.success:
+        try:
+            await self.connection.send_command(payload)
             _LOGGER.debug("UPnP status set to: %s", enabled)
-        return result
+        except Exception as err:
+            _LOGGER.error("Failed to set UPnP status: %s", err)
+            return False
 
-    async def set_upnp_status(self, enabled: bool) -> bool:
-        """Enable or disable UPnP."""
-        result = await self.set_upnp_status_result(enabled)
-        return result.success
+        return True
