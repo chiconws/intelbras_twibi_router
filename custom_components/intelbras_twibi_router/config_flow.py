@@ -12,6 +12,7 @@ from homeassistant.helpers import device_registry as dr, entity_registry as er, 
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import APIError, AuthenticationError
+from .api.models import OnlineDevice
 from .twibi_api import TwibiAPI
 from .const import (
     CONF_EXCLUDE_WIRED,
@@ -24,17 +25,22 @@ from .const import (
     DEFAULT_TWIBI_IP_ADDRESS,
     DEFAULT_UPDATE_INTERVAL,
     DOMAIN,
-    MODULES,
 )
 
 _LOGGER = logging.getLogger(__name__)
 
 
-def _device_option_label(device: dict) -> str:
+def _device_option_label(device: OnlineDevice | dict) -> str:
     """Build a user-facing label for a device selection option."""
-    device_name = device.get("dev_name") or f"Device {device['dev_mac']}"
-    device_ip = device.get("dev_ip") or "offline"
-    connection = device.get("connection") or "Unavailable"
+    if isinstance(device, OnlineDevice):
+        device_name = device.display_name
+        device_ip = device.ip or "offline"
+        connection = device.connection_type or "Unavailable"
+    else:
+        device_name = device.get("dev_name") or f"Device {device['dev_mac']}"
+        device_ip = device.get("dev_ip") or "offline"
+        connection = device.get("connection") or "Unavailable"
+
     return f"{device_name} ({device_ip}, {connection})"
 
 
@@ -101,7 +107,7 @@ class TwibiConfigFlow(ConfigFlow, domain=DOMAIN):
     def __init__(self) -> None:
         """Initialize the config flow."""
         self._data = {}
-        self._devices = []
+        self._devices: list[OnlineDevice] = []
         self._api = None
 
     async def async_step_user(self, user_input=None):
@@ -203,28 +209,7 @@ class TwibiConfigFlow(ConfigFlow, domain=DOMAIN):
                             errors=errors,
                         )
 
-                    data = await self._api.get_modules(MODULES)
-                    online_devices = data.get("online_list", [])
-
-                    # Filter devices based on the exclude_wired setting if enabled
-                    if self._data.get(CONF_EXCLUDE_WIRED, DEFAULT_EXCLUDE_WIRED):
-                        online_devices = [
-                            dev for dev in online_devices
-                            if dev.get("wifi_mode") != "--"
-                        ]
-
-                    # Create a list of devices for the multi-select
-                    self._devices = [
-                        {
-                            "dev_mac": dev["dev_mac"],
-                            "dev_name": dev["dev_name"] or f"Device {dev['dev_mac']}",
-                            "dev_ip": dev["dev_ip"],
-                            "connection": "Ethernet" if dev.get("wifi_mode") == "--" else
-                                         "5GHz" if dev.get("wifi_mode") == "AC" else
-                                         "2.4GHz" if dev.get("wifi_mode") == "BGN" else "",
-                        }
-                        for dev in online_devices
-                    ]
+                    self._devices = await self._api.get_online_devices()
 
                     if not self._devices:
                         errors["base"] = "Nenhum dispositivo encontrado com o filtro atual. Desmarque a opção de Wi-Fi apenas ou conecte um dispositivo e tente novamente."
@@ -286,7 +271,7 @@ class TwibiConfigFlow(ConfigFlow, domain=DOMAIN):
 
         # Create a mapping of MAC addresses to display names
         mac_to_name = {
-            dev["dev_mac"]: _device_option_label(dev)
+            dev.mac: _device_option_label(dev)
             for dev in self._devices
         }
 
@@ -322,7 +307,7 @@ class TwibiOptionsFlow(OptionsFlow):
         self._config_data = dict(config_entry.data)
         self._entry = config_entry
         self._api = None
-        self._devices = []
+        self._devices: list[OnlineDevice] = []
 
     async def async_step_init(self, user_input=None):
         """Handle the initial step."""
@@ -386,29 +371,7 @@ class TwibiOptionsFlow(OptionsFlow):
                             errors=errors,
                         )
 
-                    await self._api.login()
-                    data = await self._api.get_modules(MODULES)
-                    online_devices = data.get("online_list", [])
-
-                    # Filter devices based on the exclude_wired setting if enabled
-                    if self._temp_data.get(CONF_EXCLUDE_WIRED, self._config_data.get(CONF_EXCLUDE_WIRED, DEFAULT_EXCLUDE_WIRED)):
-                        online_devices = [
-                            dev for dev in online_devices
-                            if dev.get("wifi_mode") != "--"
-                        ]
-
-                    # Create a list of devices for the multi-select
-                    self._devices = [
-                        {
-                            "dev_mac": dev["dev_mac"],
-                            "dev_name": dev["dev_name"] or f"Device {dev['dev_mac']}",
-                            "dev_ip": dev["dev_ip"],
-                            "connection": "Ethernet" if dev.get("wifi_mode") == "--" else
-                                         "5GHz" if dev.get("wifi_mode") == "AC" else
-                                         "2.4GHz" if dev.get("wifi_mode") == "BGN" else "",
-                        }
-                        for dev in online_devices
-                    ]
+                    self._devices = await self._api.get_online_devices()
 
                     if not self._devices:
                         errors["base"] = "Nenhum dispositivo encontrado com o filtro atual. Desmarque a opção de Wi-Fi apenas ou conecte um dispositivo e tente novamente."
@@ -446,7 +409,7 @@ class TwibiOptionsFlow(OptionsFlow):
                 CONF_TRACK_ALL_DEVICES,
                 not current_selected,
             )
-            available_option_macs = {dev["dev_mac"] for dev in self._devices}
+            available_option_macs = {dev.mac for dev in self._devices}
             track_all_devices = (
                 bool(available_option_macs)
                 and was_tracking_all
@@ -481,7 +444,7 @@ class TwibiOptionsFlow(OptionsFlow):
 
         # Create a mapping of MAC addresses to display names
         mac_to_name = {
-            dev["dev_mac"]: _device_option_label(dev)
+            dev.mac: _device_option_label(dev)
             for dev in self._devices
         }
 

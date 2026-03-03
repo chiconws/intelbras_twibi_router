@@ -1,7 +1,24 @@
 """Data models for Twibi Router API."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
+
+from .enums import (
+    AuthenticationErrorCode,
+    CommandErrorCode,
+    DeviceConnectionType,
+    DhcpState,
+    DeviceRssiDefault,
+    DeviceTxRateDefault,
+    FirmwareUpdateState,
+    GuestNetworkState,
+    NetworkLinkState,
+    NodeNetworkStatus,
+    NodeRole,
+    NodeLedState,
+    UpnpState,
+    WifiMode,
+)
 
 
 @dataclass(frozen=True)
@@ -18,7 +35,7 @@ class AuthenticationResult:
         errcode = data.get("errcode")
         errcode_str = None if errcode is None else str(errcode)
         return cls(
-            authenticated=errcode_str != "1",
+            authenticated=errcode_str != AuthenticationErrorCode.INVALID_CREDENTIALS,
             errcode=errcode_str,
             raw=data,
         )
@@ -41,7 +58,7 @@ class CommandResult:
         errcode_str = None if errcode is None else str(errcode)
         return cls(
             command=command,
-            success=errcode_str in (None, "0"),
+            success=errcode_str in (None, CommandErrorCode.SUCCESS),
             errcode=errcode_str,
             raw=data,
         )
@@ -54,7 +71,7 @@ class CommandResult:
     @property
     def rejected_by_router(self) -> bool:
         """Return True when the router explicitly rejected the command."""
-        return not self.success and self.errcode not in (None, "0")
+        return not self.success and self.errcode not in (None, CommandErrorCode.SUCCESS)
 
     @property
     def failed_locally(self) -> bool:
@@ -68,9 +85,9 @@ class NodeInfo:
 
     id: str
     ip: str
-    role: str  # "0" for secondary, "1" for primary
+    role: NodeRole
     serial_number: str
-    led: str  # "0" for off, "1" for on
+    led: NodeLedState
     location: str
     lan_mac: str
     wan_mac: str
@@ -83,7 +100,7 @@ class NodeInfo:
     uptime: str
     update_date: str
     ipv6: str
-    net_status: str
+    net_status: NodeNetworkStatus
     link_status: str
     link_quality: str | None = None
     netmask: str = ""
@@ -96,33 +113,36 @@ class NodeInfo:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "NodeInfo":
         """Create NodeInfo from API response dictionary."""
+        role = NodeRole(data["role"])
+        link_quality = data["link_quality"] if role is NodeRole.SECONDARY else None
+
         return cls(
-            id=data.get("id", ""),
-            ip=data.get("ip", ""),
-            role=data.get("role", "0"),
-            serial_number=data.get("serial_number", ""),
-            led=data.get("led", "0"),
-            location=data.get("location", ""),
-            lan_mac=data.get("lan_mac", ""),
-            wan_mac=data.get("wan_mac", ""),
-            wifi_5g_mac=data.get("5Gwifi_mac", ""),
-            wifi_2g_mac=data.get("2Gwifi_mac", ""),
-            device_name=data.get("dut_name", ""),
-            device_version=data.get("dut_version", ""),
-            serial=data.get("sn", ""),
-            group_serial=data.get("groupsn", ""),
-            uptime=data.get("Uptime", ""),
-            update_date=data.get("up_date", ""),
-            ipv6=data.get("ipv6", ""),
-            net_status=data.get("net_status", ""),
-            link_status=data.get("link_status", ""),
-            link_quality=str(data.get("link_quality")) if data.get("link_quality") is not None else None,
-            netmask=data.get("netmask", ""),
-            gateway=data.get("gw", ""),
-            first_dns=data.get("first_dns", ""),
-            second_dns=data.get("sec_dns", ""),
-            up_speed=data.get("up_speed", ""),
-            down_speed=data.get("down_speed", ""),
+            id=data["id"],
+            ip=data["ip"],
+            role=role,
+            serial_number=data["serial_number"],
+            led=NodeLedState(data["led"]),
+            location=data["location"],
+            lan_mac=data["lan_mac"],
+            wan_mac=data["wan_mac"],
+            wifi_5g_mac=data["5Gwifi_mac"],
+            wifi_2g_mac=data["2Gwifi_mac"],
+            device_name=data["dut_name"],
+            device_version=data["dut_version"],
+            serial=data["sn"],
+            group_serial=data["groupsn"],
+            uptime=data["Uptime"],
+            update_date=data["up_date"],
+            ipv6=data["ipv6"],
+            net_status=NodeNetworkStatus(data["net_status"]),
+            link_status=data["link_status"],
+            link_quality=link_quality,
+            netmask=data["netmask"],
+            gateway=data["gw"],
+            first_dns=data["first_dns"],
+            second_dns=data["sec_dns"],
+            up_speed=data["up_speed"],
+            down_speed=data["down_speed"],
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -159,12 +179,12 @@ class NodeInfo:
     @property
     def is_primary(self) -> bool:
         """Check if this is the primary router node."""
-        return self.role == "1"
+        return self.role is NodeRole.PRIMARY
 
     @property
     def is_led_on(self) -> bool:
         """Check if the LED is currently on."""
-        return self.led == "1"
+        return self.led is NodeLedState.ON
 
 
 @dataclass
@@ -179,25 +199,27 @@ class OnlineDevice:
     connect_time: str
     serial: str
     link_type: str | None = None
-    rssi: str = "0"
-    tx_rate: str = "0"
-    wifi_mode: str = "--"
+    rssi: str = DeviceRssiDefault.UNKNOWN
+    tx_rate: str = DeviceTxRateDefault.UNKNOWN
+    wifi_mode: WifiMode = WifiMode.WIRED
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "OnlineDevice":
         """Create OnlineDevice from API response dictionary."""
+        wifi_mode = WifiMode(data["wifi_mode"])
+
         return cls(
-            ip=data.get("dev_ip", ""),
-            name=data.get("dev_name", ""),
-            mac=data.get("dev_mac", ""),
-            download_speed=data.get("download_speed", "0"),
-            upload_speed=data.get("upload_speed", "0"),
-            connect_time=data.get("connect_time", ""),
-            serial=data.get("sn", ""),
+            ip=data["dev_ip"],
+            name=data["dev_name"],
+            mac=data["dev_mac"],
+            download_speed=data["download_speed"],
+            upload_speed=data["upload_speed"],
+            connect_time=data["connect_time"],
+            serial=data["sn"],
             link_type=data.get("link_type"),
-            rssi=data.get("rssi", "0"),
-            tx_rate=data.get("tx_rate", "0"),
-            wifi_mode=data.get("wifi_mode", "--"),
+            rssi=data["rssi"],
+            tx_rate=data["tx_rate"],
+            wifi_mode=wifi_mode,
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -219,19 +241,12 @@ class OnlineDevice:
     @property
     def is_wired(self) -> bool:
         """Check if device is connected via Ethernet."""
-        return self.wifi_mode == "--"
+        return self.wifi_mode is WifiMode.WIRED
 
     @property
-    def connection_type(self) -> str:
+    def connection_type(self) -> DeviceConnectionType:
         """Get human-readable connection type."""
-        if self.is_wired:
-            return "Ethernet"
-        match self.wifi_mode:
-            case "AC":
-                return "5GHz"
-            case "BGN":
-                return "2.4GHz"
-        return "Unknown"
+        return self.wifi_mode.connection_type
 
     @property
     def display_name(self) -> str:
@@ -253,11 +268,11 @@ class WanStatistic:
     def from_dict(cls, data: dict[str, Any]) -> "WanStatistic":
         """Create WanStatistic from API response dictionary."""
         return cls(
-            id=data.get("id", ""),
-            up_speed=data.get("up_speed", "0"),
-            down_speed=data.get("down_speed", "0"),
-            total_upload=data.get("ttotal_up", "0"),
-            total_download=data.get("ttotal_down", "0"),
+            id=data["id"],
+            up_speed=data["up_speed"],
+            down_speed=data["down_speed"],
+            total_upload=data["ttotal_up"],
+            total_download=data["ttotal_down"],
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -300,10 +315,10 @@ class WifiInfo:
     def from_dict(cls, data: dict[str, Any]) -> "WifiInfo":
         """Create WifiInfo from API response dictionary."""
         return cls(
-            ssid=data.get("ssid", ""),
-            security_type=data.get("type", ""),
-            security_mode=data.get("security", ""),
-            password=data.get("pass", ""),
+            ssid=data["ssid"],
+            security_type=data["type"],
+            security_mode=data["security"],
+            password=data["pass"],
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -330,17 +345,21 @@ class GuestInfo:
     def from_dict(cls, data: dict[str, Any]) -> "GuestInfo":
         """Create GuestInfo from API response dictionary."""
         return cls(
-            enabled=data.get("guest_en", "0") == "1",
-            ssid=data.get("guest_ssid", ""),
-            password=data.get("guest_pass", ""),
-            time_restriction=data.get("guest_time", ""),
-            bandwidth_limit=data.get("limit", "0"),
+            enabled=data["guest_en"] == GuestNetworkState.ENABLED,
+            ssid=data["guest_ssid"],
+            password=data["guest_pass"],
+            time_restriction=data["guest_time"],
+            bandwidth_limit=data["limit"],
         )
 
     def to_dict(self) -> dict[str, Any]:
         """Convert GuestInfo back to dictionary format for API compatibility."""
         return {
-            "guest_en": "1" if self.enabled else "0",
+            "guest_en": (
+                GuestNetworkState.ENABLED
+                if self.enabled
+                else GuestNetworkState.DISABLED
+            ),
             "guest_ssid": self.ssid,
             "guest_pass": self.password,
             "guest_time": self.time_restriction,
@@ -365,14 +384,14 @@ class LanInfo:
     def from_dict(cls, data: dict[str, Any]) -> "LanInfo":
         """Create LanInfo from API response dictionary."""
         return cls(
-            lan_ip=data.get("lan_ip", ""),
-            lan_mask=data.get("lan_mask", ""),
-            dhcp_enabled=data.get("dhcp_en", "0") == "1",
-            start_ip=data.get("start_ip", ""),
-            end_ip=data.get("end_ip", ""),
-            lease_time=data.get("lease_time", ""),
-            dns1=data.get("dns1", ""),
-            dns2=data.get("dns2", ""),
+            lan_ip=data["lan_ip"],
+            lan_mask=data["lan_mask"],
+            dhcp_enabled=data["dhcp_en"] == DhcpState.ENABLED,
+            start_ip=data["start_ip"],
+            end_ip=data["end_ip"],
+            lease_time=data["lease_time"],
+            dns1=data["dns1"],
+            dns2=data["dns2"],
         )
 
 
@@ -396,17 +415,17 @@ class WanInfo:
     def from_dict(cls, data: dict[str, Any]) -> "WanInfo":
         """Create WanInfo from API response dictionary."""
         return cls(
-            id=data.get("id", ""),
-            ip=data.get("ip", ""),
-            netmask=data.get("netmask", ""),
-            gateway=data.get("gw", ""),
-            mac=data.get("mac", ""),
-            first_dns=data.get("first_dns", ""),
-            second_dns=data.get("sec_dns", ""),
-            ipv6=data.get("ipv6", ""),
-            ipv6_gateway=data.get("ipv6_gw", ""),
-            ipv6_first_dns=data.get("ipv6_first_dns", ""),
-            ipv6_second_dns=data.get("ipv6_sec_dns", ""),
+            id=data["id"],
+            ip=data["ip"],
+            netmask=data["netmask"],
+            gateway=data["gw"],
+            mac=data["mac"],
+            first_dns=data["first_dns"],
+            second_dns=data["sec_dns"],
+            ipv6=data["ipv6"],
+            ipv6_gateway=data["ipv6_gw"],
+            ipv6_first_dns=data["ipv6_first_dns"],
+            ipv6_second_dns=data["ipv6_sec_dns"],
         )
 
 
@@ -424,11 +443,11 @@ class VersionInfo:
     def from_dict(cls, data: dict[str, Any]) -> "VersionInfo":
         """Create VersionInfo from API response dictionary."""
         return cls(
-            has_new=data.get("hasNew", "0") == "1",
-            version=data.get("version", ""),
-            changelog=data.get("changelog", ""),
-            current_version=data.get("current_version", ""),
-            system_has_new=data.get("sysHasNew", "0") == "1",
+            has_new=data["hasNew"] == FirmwareUpdateState.UPDATE_AVAILABLE,
+            version=data["version"],
+            changelog=data["changelog"],
+            current_version=data["current_version"],
+            system_has_new=(data["sysHasNew"] == FirmwareUpdateState.UPDATE_AVAILABLE),
         )
 
 
@@ -436,21 +455,21 @@ class VersionInfo:
 class NetworkLinkStatus:
     """Represents network link status."""
 
-    net_status: str
+    net_status: NetworkLinkState
     id: str
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "NetworkLinkStatus":
         """Create NetworkLinkStatus from API response dictionary."""
         return cls(
-            net_status=data.get("net_status", ""),
-            id=data.get("id", ""),
+            net_status=NetworkLinkState(data["net_status"]),
+            id=data["id"],
         )
 
     @property
     def is_connected(self) -> bool:
         """Check if network is connected."""
-        return self.net_status == "3"
+        return self.net_status == NetworkLinkState.CONNECTED
 
 
 @dataclass
@@ -463,5 +482,101 @@ class UpnpInfo:
     def from_dict(cls, data: dict[str, Any]) -> "UpnpInfo":
         """Create UpnpInfo from API response dictionary."""
         return cls(
-            upnp_enabled=data.get("upnp_en", "0") == "1",
+            upnp_enabled=data["upnp_en"] == UpnpState.ENABLED,
+        )
+
+
+@dataclass
+class RouterData:
+    """Represents the full typed data snapshot used by the integration."""
+
+    node_info: list[NodeInfo]
+    online_list: list[OnlineDevice]
+    wan_statistic: list[WanStatistic]
+    wan_info: list[WanInfo] = field(default_factory=list)
+    lan_info: LanInfo | None = None
+    wifi: WifiInfo | None = None
+    guest_info: GuestInfo | None = None
+    getversion: VersionInfo | None = None
+    upnp_info: UpnpInfo | None = None
+    net_link_status: list[NetworkLinkStatus] = field(default_factory=list)
+
+    @classmethod
+    def from_dict(
+        cls,
+        data: dict[str, Any],
+        *,
+        exclude_wired: bool = False,
+    ) -> "RouterData":
+        """Build a typed router snapshot from a validated API payload."""
+        online_list = [OnlineDevice.from_dict(device) for device in data["online_list"]]
+        if exclude_wired:
+            online_list = [device for device in online_list if not device.is_wired]
+
+        wan_info_data = data.get("wan_info") or []
+        net_link_status_data = data.get("net_link_status") or []
+
+        lan_info_data = data.get("lan_info")
+        wifi_data = data.get("wifi")
+        guest_info_data = data.get("guest_info")
+        version_data = data.get("getversion")
+        upnp_info_data = data.get("upnp_info")
+
+        return cls(
+            node_info=[NodeInfo.from_dict(node) for node in data["node_info"]],
+            online_list=online_list,
+            wan_statistic=[
+                WanStatistic.from_dict(statistic)
+                for statistic in data["wan_statistic"]
+            ],
+            wan_info=[WanInfo.from_dict(wan) for wan in wan_info_data],
+            lan_info=LanInfo.from_dict(lan_info_data) if lan_info_data else None,
+            wifi=WifiInfo.from_dict(wifi_data) if wifi_data else None,
+            guest_info=GuestInfo.from_dict(guest_info_data) if guest_info_data else None,
+            getversion=VersionInfo.from_dict(version_data) if version_data else None,
+            upnp_info=UpnpInfo.from_dict(upnp_info_data) if upnp_info_data else None,
+            net_link_status=[
+                NetworkLinkStatus.from_dict(status)
+                for status in net_link_status_data
+            ],
+        )
+
+    @property
+    def primary_node(self) -> NodeInfo | None:
+        """Return the primary node from the current snapshot."""
+        return next(
+            (node for node in self.node_info if node.role is NodeRole.PRIMARY),
+            None,
+        )
+
+    @property
+    def secondary_nodes(self) -> list[NodeInfo]:
+        """Return all secondary nodes from the current snapshot."""
+        return [
+            node
+            for node in self.node_info
+            if node.role is NodeRole.SECONDARY
+        ]
+
+    def get_node_by_serial(self, serial: str) -> NodeInfo | None:
+        """Return a node by serial number."""
+        return next((node for node in self.node_info if node.serial == serial), None)
+
+    def get_node_by_id(self, node_id: str) -> NodeInfo | None:
+        """Return a node by node ID."""
+        return next((node for node in self.node_info if node.id == node_id), None)
+
+    def get_device_by_mac(self, mac: str) -> OnlineDevice | None:
+        """Return a client device by MAC address."""
+        return next((device for device in self.online_list if device.mac == mac), None)
+
+    def get_wan_statistic(self, statistic_id: str) -> WanStatistic | None:
+        """Return a WAN statistic entry by ID."""
+        return next(
+            (
+                statistic
+                for statistic in self.wan_statistic
+                if statistic.id == statistic_id
+            ),
+            None,
         )

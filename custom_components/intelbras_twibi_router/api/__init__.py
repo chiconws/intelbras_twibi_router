@@ -9,6 +9,7 @@ from .models import (
     GuestInfo,
     NodeInfo,
     OnlineDevice,
+    RouterData,
     WanStatistic,
     WifiInfo,
 )
@@ -22,6 +23,7 @@ __all__ = [
     "GuestInfo",
     "NodeInfo",
     "OnlineDevice",
+    "RouterData",
     "TwibiConnection",
     "TwibiController",
     "TwibiDataFetcher",

@@ -5,6 +5,7 @@ from homeassistant.components.button import ButtonEntity
 from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.util import slugify
 
 from .twibi_api import TwibiAPI
 from .const import DOMAIN
@@ -47,7 +48,7 @@ class TwibiRestartButton(CoordinatorEntity, ButtonEntity):
         self._attr_icon = "mdi:restart"
         self._attr_entity_category = EntityCategory.CONFIG
         self._device_id = device_id
-        self.entity_id = f"button.restart_router_{host}"
+        self._attr_suggested_object_id = f"restart_router_{slugify(host)}"
 
     @property
     def device_info(self):

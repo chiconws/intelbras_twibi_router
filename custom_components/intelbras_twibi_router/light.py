@@ -3,8 +3,9 @@ from homeassistant.components.light import ColorMode, LightEntity
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .twibi_api import TwibiAPI
+from .api.enums import NodeLedState, NodeRole
 from .const import DOMAIN
+from .twibi_api import TwibiAPI
 
 
 async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
@@ -15,9 +16,9 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
     api = entry_data['api']
 
     entities = []
-    for node in coordinator.data["node_info"]:
-        serial = node["sn"]
-        if node["role"] == "1":
+    for node in coordinator.data.node_info:
+        serial = node.serial
+        if node.role is NodeRole.PRIMARY:
             device_id = (DOMAIN, host)
         else:
             device_id = (DOMAIN, serial)
@@ -59,11 +60,8 @@ class TwibiLedLight(CoordinatorEntity, LightEntity):
     @property
     def is_on(self) -> bool:
         """Return None instead of False when unavailable."""
-        node = next(
-            (n for n in self.coordinator.data["node_info"]
-             if n["sn"] == self._serial), {}
-        )
-        return node.get("led") == "1"
+        node = self.coordinator.get_node_by_serial(self._serial)
+        return node is not None and node.led is NodeLedState.ON
 
     async def async_turn_on(self) -> None:
         """Turn on the LED for the Twibi node."""

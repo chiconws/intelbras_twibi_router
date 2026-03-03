@@ -8,6 +8,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
+from .api.models import OnlineDevice
 from .const import CONF_SELECTED_DEVICES, CONF_TRACK_ALL_DEVICES, DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
@@ -37,8 +38,8 @@ def async_check_new_devices(hass: HomeAssistant, entry, async_add_entities):
     coordinator = entry_data["coordinator"]
     host = entry_data["host"]
 
-    online_devices = coordinator.data.get("online_list", [])
-    online_by_mac = {dev["dev_mac"]: dev for dev in online_devices}
+    online_devices = coordinator.data.online_list
+    online_by_mac = {device.mac: device for device in online_devices}
     current_macs = set(online_by_mac)
     registered_macs = _get_registered_tracker_macs(hass, entry.entry_id)
     selected_devices = entry.data.get(CONF_SELECTED_DEVICES, [])
@@ -52,7 +53,11 @@ def async_check_new_devices(hass: HomeAssistant, entry, async_add_entities):
     else:
         desired_macs = set(selected_devices or [])
 
-    _LOGGER.debug("Found %d online devices: %s", len(online_devices), [f"{dev.get('dev_name', 'Unknown')} ({dev.get('dev_mac')})" for dev in online_devices])
+    _LOGGER.debug(
+        "Found %d online devices: %s",
+        len(online_devices),
+        [f"{device.display_name} ({device.mac})" for device in online_devices],
+    )
     _LOGGER.debug("Current MACs: %s", current_macs)
     _LOGGER.debug("Registered MACs: %s", registered_macs)
     _LOGGER.debug("Known MACs: %s", coordinator.known_macs)
@@ -69,20 +74,17 @@ def async_check_new_devices(hass: HomeAssistant, entry, async_add_entities):
     entities = []
     stored_names = _get_registered_tracker_names(hass, entry.entry_id)
     for mac in sorted(new_macs):
-        device_info = online_by_mac.get(
-            mac,
-            {
-                "dev_mac": mac,
-                "dev_name": stored_names.get(mac) or f"Device {mac}",
-                "dev_ip": None,
-                "wifi_mode": None,
-            },
+        device_info = online_by_mac.get(mac)
+        device_name = (
+            device_info.display_name
+            if device_info is not None
+            else stored_names.get(mac) or f"Device {mac}"
         )
 
-        _LOGGER.debug("Creating device tracker for MAC: %s, Name: %s", mac, device_info.get("dev_name", "Unknown"))
+        _LOGGER.debug("Creating device tracker for MAC: %s, Name: %s", mac, device_name)
 
         entities.append(
-            TwibiDeviceTracker(coordinator, host, mac, device_info, entry.entry_id)
+            TwibiDeviceTracker(coordinator, host, mac, device_name, entry.entry_id)
         )
         coordinator.known_macs.add(mac)
 
@@ -132,7 +134,7 @@ class TwibiDeviceTracker(CoordinatorEntity, ScannerEntity):
         coordinator,
         host,
         mac: str,
-        device_info: dict,
+        device_name: str,
         entry_id: str,
     ) -> None:
         """Initialize the device tracker."""
@@ -141,7 +143,7 @@ class TwibiDeviceTracker(CoordinatorEntity, ScannerEntity):
         self._mac = mac
         self._host = host
         self._entry_id = entry_id
-        self._device_info = device_info
+        self._device_name = device_name
         self._attr_entity_category = None
         self._attr_should_poll = False
         self._last_known_online_status = None  # Track last known status (None = unknown, True = online, False = offline)
@@ -151,7 +153,7 @@ class TwibiDeviceTracker(CoordinatorEntity, ScannerEntity):
             "connections": {(dr.CONNECTION_NETWORK_MAC, mac)},
             "manufacturer": "Unknown",
             "model": "Network Device",
-            "name": device_info["dev_name"] or f"Device {mac}",
+            "name": device_name,
             "via_device": (DOMAIN, host),
         }
 
@@ -177,20 +179,21 @@ class TwibiDeviceTracker(CoordinatorEntity, ScannerEntity):
     def name(self) -> str:
         """Return the name of the device."""
         return (
-            self._device_info.get("dev_name")
+            (self.current_info.display_name if self.current_info else None)
+            or self._device_name
             or f"Device {self.ip_address or self._mac}"
         )
 
     @property
-    def online_list(self) -> list:
+    def online_list(self) -> list[OnlineDevice]:
         """Return a list with the online devices."""
-        return self.coordinator.data.get("online_list", [])
+        return self.coordinator.data.online_list
 
     @property
     def is_connected(self) -> bool:
         """Return whether the device is currently connected."""
-        connected = self._mac in {dev.get("dev_mac") for dev in self.online_list}
-        self._last_known_online_status = connected # Update last known online status
+        connected = self.current_info is not None
+        self._last_known_online_status = connected
         return connected
 
     @property
@@ -219,30 +222,21 @@ class TwibiDeviceTracker(CoordinatorEntity, ScannerEntity):
         return STATE_HOME if self.is_connected else STATE_NOT_HOME
 
     @property
-    def current_info(self) -> dict:
+    def current_info(self) -> OnlineDevice | None:
         """Return the current device information."""
-        return next(
-            (dev for dev in self.online_list if dev.get("dev_mac") == self._mac),
-            self._device_info,
-        )
+        return self.coordinator.data.get_device_by_mac(self._mac)
 
     @property
     def ip_address(self) -> str | None:
         """Return the IP address of the device, or None if unavailable."""
-        return self.current_info.get("dev_ip")
+        current_info = self.current_info
+        return current_info.ip if current_info else None
 
     @property
     def connection_type(self) -> str:
         """Return the connection type of the device."""
-        match self.current_info.get("wifi_mode"):
-            case "--":
-                return "Ethernet"
-            case "AC":
-                return "5GHz"
-            case "BGN":
-                return "2.4GHz"
-            case _:
-                return ""
+        current_info = self.current_info
+        return current_info.connection_type if current_info else ""
 
     @property
     def extra_state_attributes(self) -> dict:

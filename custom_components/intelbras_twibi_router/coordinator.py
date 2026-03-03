@@ -3,20 +3,20 @@
 import asyncio
 from datetime import timedelta
 import logging
-from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .api import APIError, AuthenticationError, ConnectionError as TwibiConnectionError
+from .api.models import NodeInfo, OnlineDevice, RouterData, WanStatistic
 from .const import MAIN_SCHEMA
 from .twibi_api import TwibiAPI
 
 _LOGGER = logging.getLogger(__name__)
 
 
-class TwibiCoordinator(DataUpdateCoordinator):
+class TwibiCoordinator(DataUpdateCoordinator[RouterData]):
     """Improved data update coordinator for Intelbras Twibi router."""
 
     def __init__(
@@ -47,12 +47,13 @@ class TwibiCoordinator(DataUpdateCoordinator):
         self._restart_recovery_attempts = 0
         self._max_restart_recovery_attempts = 10  # Allow more attempts during restart recovery
 
-    async def _async_update_data(self) -> dict[str, Any]:
+    async def _async_update_data(self) -> RouterData:
         """Update data from the router with improved retry logic and error handling."""
-        # Check if we're in restart recovery mode
-        max_attempts = self._max_restart_recovery_attempts if self._router_restart_detected else self.max_retries
+        for attempt in range(self._max_restart_recovery_attempts):
+            max_attempts = self._current_max_attempts()
+            if attempt >= max_attempts:
+                break
 
-        for attempt in range(max_attempts):
             try:
                 # Perform health check first if we've had recent failures
                 if self._consecutive_failures > 0:
@@ -78,9 +79,13 @@ class TwibiCoordinator(DataUpdateCoordinator):
 
                 # Validate data structure
                 validated_data = MAIN_SCHEMA(data)
+                typed_data = RouterData.from_dict(
+                    validated_data,
+                    exclude_wired=self.api.exclude_wired,
+                )
 
                 # Check for router restart detection
-                if self._detect_router_restart(validated_data):
+                if self._detect_router_restart(typed_data):
                     _LOGGER.info("Router restart detected - entering recovery mode")
                     self._router_restart_detected = True
                     self._restart_recovery_attempts = 0
@@ -95,21 +100,25 @@ class TwibiCoordinator(DataUpdateCoordinator):
                     self._router_restart_detected = False
                     self._restart_recovery_attempts = 0
 
-                return validated_data
+                return typed_data
 
             except AuthenticationError as err:
                 # Authentication errors might be temporary with flaky routers
                 self._consecutive_failures += 1
                 self.api.invalidate_auth()
+                self._maybe_enable_restart_recovery()
+                max_attempts = self._current_max_attempts()
 
-                if attempt < self.max_retries - 1:
+                if attempt < max_attempts - 1:
                     # For flaky routers, try to re-authenticate
-                    delay = self.base_retry_delay * (2 ** attempt)
+                    delay = self._get_retry_delay(attempt)
+                    self._record_retry_attempt()
                     self.logger.warning(
-                        "Authentication failed (attempt %d/%d): %s. Router may be unstable, retrying in %d seconds...",
+                        "Authentication failed (attempt %d/%d): %s. %sRetrying in %d seconds...",
                         attempt + 1,
-                        self.max_retries,
+                        max_attempts,
                         err,
+                        "Router restart recovery mode - " if self._router_restart_detected else "",
                         delay
                     )
                     await asyncio.sleep(delay)
@@ -117,31 +126,21 @@ class TwibiCoordinator(DataUpdateCoordinator):
                 else:
                     self.logger.error(
                         "Authentication failed after %d attempts: %s. Router may be unstable.",
-                        self.max_retries,
+                        max_attempts,
                         err
                     )
-                    raise UpdateFailed(f"Authentication failed after {self.max_retries} attempts: {err}") from err
+                    raise UpdateFailed(f"Authentication failed after {max_attempts} attempts: {err}") from err
 
             except (TwibiConnectionError, APIError) as err:
                 self._consecutive_failures += 1
 
                 # Check if this might be a router restart (daily 03:30 restart)
-                current_time = self.hass.loop.time()
-                if (self._last_successful_update is not None and
-                    (current_time - self._last_successful_update) < 600 and  # Less than 10 minutes since last success
-                    not self._router_restart_detected):
-                    _LOGGER.info("Possible router restart detected - enabling extended recovery mode")
-                    self._router_restart_detected = True
-                    self._restart_recovery_attempts = 0
+                self._maybe_enable_restart_recovery()
+                max_attempts = self._current_max_attempts()
 
                 if attempt < max_attempts - 1:
-                    # Calculate delay - use longer delays during restart recovery
-                    if self._router_restart_detected:
-                        # During restart recovery, use longer delays to give router time to boot
-                        delay = min(30, self.base_retry_delay * (2 ** min(attempt, 4)))  # Cap at 30 seconds
-                        self._restart_recovery_attempts += 1
-                    else:
-                        delay = self.base_retry_delay * (2 ** attempt)
+                    delay = self._get_retry_delay(attempt)
+                    self._record_retry_attempt()
 
                     self.logger.warning(
                         "Update failed (attempt %d/%d): %s. %sRetrying in %d seconds...",
@@ -174,17 +173,52 @@ class TwibiCoordinator(DataUpdateCoordinator):
             except Exception as err:
                 # Unexpected errors
                 self._consecutive_failures += 1
+                self._maybe_enable_restart_recovery()
+                max_attempts = self._current_max_attempts()
                 self.logger.error("Unexpected error during update: %s", err)
 
-                if attempt < self.max_retries - 1:
-                    delay = self.base_retry_delay * (2 ** attempt)
+                if attempt < max_attempts - 1:
+                    delay = self._get_retry_delay(attempt)
+                    self._record_retry_attempt()
                     await asyncio.sleep(delay)
                     continue
                 else:
-                    raise UpdateFailed(f"Unexpected error after {self.max_retries} attempts: {err}") from err
+                    raise UpdateFailed(f"Unexpected error after {max_attempts} attempts: {err}") from err
 
         # This should never be reached, but just in case
         raise UpdateFailed("Maximum retries exceeded")
+
+    def _current_max_attempts(self) -> int:
+        """Return the active retry limit for the current update cycle."""
+        return (
+            self._max_restart_recovery_attempts
+            if self._router_restart_detected
+            else self.max_retries
+        )
+
+    def _maybe_enable_restart_recovery(self) -> None:
+        """Enable restart recovery mode when a recent-success failure suggests a reboot."""
+        if self._router_restart_detected or self._last_successful_update is None:
+            return
+
+        current_time = self.hass.loop.time()
+        if (current_time - self._last_successful_update) < 600:
+            _LOGGER.info("Possible router restart detected - enabling extended recovery mode")
+            self._router_restart_detected = True
+            self._restart_recovery_attempts = 0
+
+    def _get_retry_delay(self, attempt: int) -> int:
+        """Return the retry delay for the current mode."""
+        if self._router_restart_detected:
+            # During restart recovery, use longer delays to give router time to boot.
+            return min(30, self.base_retry_delay * (2 ** min(attempt, 4)))
+
+        return self.base_retry_delay * (2 ** attempt)
+
+    def _record_retry_attempt(self) -> None:
+        """Track retry attempts during restart recovery."""
+        if self._router_restart_detected:
+            self._restart_recovery_attempts += 1
 
     async def async_refresh_with_fallback(self) -> bool:
         """Attempt to refresh data with fallback to cached data if available."""
@@ -206,11 +240,13 @@ class TwibiCoordinator(DataUpdateCoordinator):
     @property
     def connection_status(self) -> str:
         """Get current connection status."""
+        max_attempts = self._current_max_attempts()
+
         if self.last_update_success:
             return "connected"
         if self._consecutive_failures == 1:
             return "reconnecting"
-        if self._consecutive_failures < self.max_retries:
+        if self._consecutive_failures < max_attempts:
             return "unstable"
         return "disconnected"
 
@@ -250,7 +286,7 @@ class TwibiCoordinator(DataUpdateCoordinator):
 
         return success
 
-    async def async_get_device_info(self, mac: str) -> dict[str, Any] | None:
+    async def async_get_device_info(self, mac: str) -> OnlineDevice | None:
         """Get specific device information."""
         try:
             return await self.api.get_device_by_mac(mac)
@@ -258,57 +294,47 @@ class TwibiCoordinator(DataUpdateCoordinator):
             _LOGGER.error("Failed to get device info for %s: %s", mac, err)
             return None
 
-    def get_node_by_serial(self, serial: str) -> dict[str, Any] | None:
+    def get_node_by_serial(self, serial: str) -> NodeInfo | None:
         """Get node information by serial number from cached data."""
-        if not self.data or "node_info" not in self.data:
+        if not self.data:
             return None
 
-        return next(
-            (node for node in self.data["node_info"] if node.get("sn") == serial),
-            None
-        )
+        return self.data.get_node_by_serial(serial)
 
-    def get_device_by_mac(self, mac: str) -> dict[str, Any] | None:
+    def get_device_by_mac(self, mac: str) -> OnlineDevice | None:
         """Get device information by MAC address from cached data."""
-        if not self.data or "online_list" not in self.data:
+        if not self.data:
             return None
 
-        return next(
-            (device for device in self.data["online_list"] if device.get("dev_mac") == mac),
-            None
-        )
+        return self.data.get_device_by_mac(mac)
 
-    def get_primary_node(self) -> dict[str, Any] | None:
+    def get_primary_node(self) -> NodeInfo | None:
         """Get primary node from cached data."""
-        if not self.data or "node_info" not in self.data:
+        if not self.data:
             return None
 
-        return next(
-            (node for node in self.data["node_info"] if node.get("role") == "1"),
-            None
-        )
+        return self.data.primary_node
 
-    def get_wan_statistics(self) -> dict[str, Any] | None:
+    def get_wan_statistics(self) -> WanStatistic | None:
         """Get WAN statistics from cached data."""
-        if not self.data or "wan_statistic" not in self.data:
+        if not self.data or not self.data.wan_statistic:
             return None
 
-        wan_stats = self.data["wan_statistic"]
-        return wan_stats[0] if wan_stats else None
+        return self.data.wan_statistic[0]
 
-    def _detect_router_restart(self, new_data: dict[str, Any] | None) -> bool:
+    def _detect_router_restart(self, new_data: RouterData | None) -> bool:
         """Detect if router has restarted by comparing uptime values."""
-        if not self.data or "node_info" not in self.data or "node_info" not in new_data:
+        if not self.data or not new_data:
             return False
 
         # Compare uptime values for primary router
-        old_nodes = {node.get("sn"): node for node in self.data.get("node_info", [])}
-        new_nodes = {node.get("sn"): node for node in new_data.get("node_info", [])}
+        old_nodes = {node.serial: node for node in self.data.node_info}
+        new_nodes = {node.serial: node for node in new_data.node_info}
 
         for serial, new_node in new_nodes.items():
             if serial in old_nodes:
-                old_uptime = int(old_nodes[serial].get("Uptime", 0))
-                new_uptime = int(new_node.get("Uptime", 0))
+                old_uptime = int(old_nodes[serial].uptime)
+                new_uptime = int(new_node.uptime)
 
                 # If new uptime is significantly less than old uptime, router restarted
                 if old_uptime > 0 and new_uptime < old_uptime and (old_uptime - new_uptime) > 60:

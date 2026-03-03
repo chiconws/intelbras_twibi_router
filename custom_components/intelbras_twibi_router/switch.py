@@ -9,6 +9,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
+from .api.enums import GuestNetworkBandwidthLimit, GuestNetworkTimeRestriction
 from .const import DOMAIN
 from .coordinator import TwibiCoordinator
 
@@ -28,11 +29,11 @@ async def async_setup_entry(
     entities = []
 
     # Guest network switch
-    if coordinator.data.get("guest_info"):
+    if coordinator.data.guest_info is not None:
         entities.append(TwibiGuestNetworkSwitch(coordinator, host))
 
     # UPnP switch
-    if coordinator.data.get("upnp_info"):
+    if coordinator.data.upnp_info is not None:
         entities.append(TwibiUpnpSwitch(coordinator, host))
 
     # Remote web access switch removed per user request
@@ -59,7 +60,7 @@ class TwibiBaseSwitch(CoordinatorEntity, SwitchEntity):
 
         # Get firmware version from primary node
         primary_node = coordinator.get_primary_node()
-        sw_version = primary_node.get("dut_version") if primary_node else None
+        sw_version = primary_node.device_version if primary_node else None
 
         self._attr_device_info = {
             "identifiers": {(DOMAIN, host)},
@@ -81,32 +82,47 @@ class TwibiGuestNetworkSwitch(TwibiBaseSwitch):
     @property
     def is_on(self) -> bool:
         """Return true if guest network is enabled."""
-        guest_info = self.coordinator.data.get("guest_info", {})
-        return guest_info.get("guest_en", "0") == "1"
+        guest_info = self.coordinator.data.guest_info
+        return bool(guest_info and guest_info.enabled)
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return additional state attributes."""
-        guest_info = self.coordinator.data.get("guest_info", {})
-        password = guest_info.get("guest_pass", "")
-        bandwidth_limit = guest_info.get("limit", "0")
+        guest_info = self.coordinator.data.guest_info
+        if guest_info is None:
+            return {}
+
+        password = guest_info.password
+        bandwidth_limit = guest_info.bandwidth_limit
 
         return {
-            "ssid": guest_info.get("guest_ssid", ""),
+            "ssid": guest_info.ssid,
             "password_set": bool(password),
-            "time_restriction": guest_info.get("guest_time", ""),
-            "bandwidth_limit": "No limit" if bandwidth_limit == "0" else bandwidth_limit,
+            "time_restriction": guest_info.time_restriction,
+            "bandwidth_limit": (
+                "No limit"
+                if bandwidth_limit == GuestNetworkBandwidthLimit.UNLIMITED
+                else bandwidth_limit
+            ),
         }
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn on guest network."""
         api = self.coordinator.hass.data[DOMAIN][self.coordinator.config_entry.entry_id]["api"]
 
-        guest_info = self.coordinator.data.get("guest_info", {})
-        current_ssid = guest_info.get("guest_ssid", "")
-        current_password = guest_info.get("guest_pass", "")
-        current_time = guest_info.get("guest_time", "always")
-        current_limit = guest_info.get("limit", "0")
+        guest_info = self.coordinator.data.guest_info
+        current_ssid = guest_info.ssid if guest_info else ""
+        current_password = guest_info.password if guest_info else ""
+        current_time = (
+            guest_info.time_restriction
+            if guest_info
+            else GuestNetworkTimeRestriction.ALWAYS
+        )
+        current_limit = (
+            guest_info.bandwidth_limit
+            if guest_info
+            else GuestNetworkBandwidthLimit.UNLIMITED
+        )
 
         _LOGGER.info(
             "Guest WiFi turn ON - Current settings: SSID='%s', Password='%s', Time='%s', Limit='%s'",
@@ -131,19 +147,27 @@ class TwibiGuestNetworkSwitch(TwibiBaseSwitch):
             return
 
         await self.coordinator.async_refresh()
-        new_guest_info = self.coordinator.data.get("guest_info", {})
-        new_enabled = new_guest_info.get("guest_en", "0") == "1"
+        new_guest_info = self.coordinator.data.guest_info
+        new_enabled = bool(new_guest_info and new_guest_info.enabled)
         _LOGGER.info("Guest WiFi turn ON - After refresh, enabled state: %s", new_enabled)
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn off guest network."""
         api = self.coordinator.hass.data[DOMAIN][self.coordinator.config_entry.entry_id]["api"]
 
-        guest_info = self.coordinator.data.get("guest_info", {})
-        current_ssid = guest_info.get("guest_ssid", "")
-        current_password = guest_info.get("guest_pass", "")
-        current_time = guest_info.get("guest_time", "always")
-        current_limit = guest_info.get("limit", "0")
+        guest_info = self.coordinator.data.guest_info
+        current_ssid = guest_info.ssid if guest_info else ""
+        current_password = guest_info.password if guest_info else ""
+        current_time = (
+            guest_info.time_restriction
+            if guest_info
+            else GuestNetworkTimeRestriction.ALWAYS
+        )
+        current_limit = (
+            guest_info.bandwidth_limit
+            if guest_info
+            else GuestNetworkBandwidthLimit.UNLIMITED
+        )
 
         _LOGGER.info(
             "Guest WiFi turn OFF - Current settings: SSID='%s', Password='%s', Time='%s', Limit='%s'",
@@ -168,8 +192,8 @@ class TwibiGuestNetworkSwitch(TwibiBaseSwitch):
             return
 
         await self.coordinator.async_refresh()
-        new_guest_info = self.coordinator.data.get("guest_info", {})
-        new_enabled = new_guest_info.get("guest_en", "0") == "1"
+        new_guest_info = self.coordinator.data.guest_info
+        new_enabled = bool(new_guest_info and new_guest_info.enabled)
         _LOGGER.info("Guest WiFi turn OFF - After refresh, enabled state: %s", new_enabled)
 
 
@@ -184,8 +208,8 @@ class TwibiUpnpSwitch(TwibiBaseSwitch):
     @property
     def is_on(self) -> bool:
         """Return true if UPnP is enabled."""
-        upnp_info = self.coordinator.data.get("upnp_info", {})
-        return upnp_info.get("upnp_en", "0") == "1"
+        upnp_info = self.coordinator.data.upnp_info
+        return bool(upnp_info and upnp_info.upnp_enabled)
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn on UPnP."""

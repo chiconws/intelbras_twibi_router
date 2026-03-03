@@ -4,12 +4,14 @@ import logging
 from typing import Any
 
 from .connection import TwibiConnection
+from .enums import NodeRole
 from .models import (
     GuestInfo,
     LanInfo,
     NetworkLinkStatus,
     NodeInfo,
     OnlineDevice,
+    RouterData,
     UpnpInfo,
     WanInfo,
     WanStatistic,
@@ -28,12 +30,16 @@ class TwibiDataFetcher:
         self.exclude_wired = exclude_wired
 
     async def get_all_data(self, modules: list[str] | None = None) -> dict[str, Any]:
-        """Fetch all router data from specified modules."""
+        """Fetch raw router data from the requested modules."""
         if modules is None:
             modules = ["node_info", "online_list", "wan_statistic"]
 
-        raw_data = await self.connection.get_data(modules)
-        return self._transform_data(raw_data)
+        return await self.connection.get_data(modules)
+
+    async def get_router_data(self, modules: list[str] | None = None) -> RouterData:
+        """Fetch a full typed router snapshot."""
+        raw_data = await self.get_all_data(modules)
+        return RouterData.from_dict(raw_data, exclude_wired=self.exclude_wired)
 
     async def get_node_info(self) -> list[NodeInfo]:
         """Fetch and transform node information."""
@@ -71,52 +77,20 @@ class TwibiDataFetcher:
             "net_link_status", "link_module"
         ]
 
-    def _transform_data(self, raw_data: dict[str, Any]) -> dict[str, Any]:
-        """Transform raw API data into structured format."""
-        transformed = {}
-
-        # Transform node_info
-        if "node_info" in raw_data:
-            transformed["node_info"] = [
-                NodeInfo.from_dict(node).to_dict()
-                for node in raw_data["node_info"]
-            ]
-
-        # Transform online_list
-        if "online_list" in raw_data:
-            devices = [OnlineDevice.from_dict(dev) for dev in raw_data["online_list"]]
-            if self.exclude_wired:
-                devices = [dev for dev in devices if not dev.is_wired]
-            transformed["online_list"] = [dev.to_dict() for dev in devices]
-
-        # Transform wan_statistic
-        if "wan_statistic" in raw_data:
-            transformed["wan_statistic"] = [
-                WanStatistic.from_dict(stat).to_dict()
-                for stat in raw_data["wan_statistic"]
-            ]
-
-        # Pass through other data unchanged for now
-        for key, value in raw_data.items():
-            if key not in transformed:
-                transformed[key] = value
-
-        return transformed
-
     async def get_device_by_mac(self, mac: str) -> OnlineDevice | None:
         """Get specific device information by MAC address."""
         devices = await self.get_online_devices()
         return next((dev for dev in devices if dev.mac == mac), None)
 
     async def get_primary_node(self) -> NodeInfo | None:
-        """Get the primary router node (role == "1")."""
+        """Get the primary router node."""
         nodes = await self.get_node_info()
-        return next((node for node in nodes if node.role == "1"), None)
+        return next((node for node in nodes if node.role is NodeRole.PRIMARY), None)
 
     async def get_secondary_nodes(self) -> list[NodeInfo]:
-        """Get all secondary router nodes (role != "1")."""
+        """Get all secondary router nodes."""
         nodes = await self.get_node_info()
-        return [node for node in nodes if node.role != "1"]
+        return [node for node in nodes if node.role is NodeRole.SECONDARY]
 
     async def get_lan_info(self) -> LanInfo | None:
         """Fetch and transform LAN configuration."""

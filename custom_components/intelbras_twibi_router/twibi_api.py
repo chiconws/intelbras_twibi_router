@@ -6,7 +6,20 @@ from typing import Any
 import aiohttp
 
 from .api import APIError, TwibiConnection, TwibiController, TwibiDataFetcher
-from .api.models import AuthenticationResult, CommandResult
+from .api.enums import (
+    GuestNetworkBandwidthLimit,
+    GuestNetworkTimeRestriction,
+    WifiSecurityMode,
+    WifiSecurityType,
+)
+from .api.models import (
+    AuthenticationResult,
+    CommandResult,
+    NodeInfo,
+    OnlineDevice,
+    RouterData,
+    WanStatistic,
+)
 from .const import DEFAULT_TIMEOUT
 
 _LOGGER = logging.getLogger(__name__)
@@ -67,16 +80,16 @@ class TwibiAPI:
 
     async def login(self) -> bool:
         """Login to router (backward compatibility)."""
-        try:
-            result = await self.login_result()
-        except Exception:
-            return False
-
+        result = await self.login_result()
         return result.authenticated
 
     async def get_modules(self, module_list: list[str]) -> dict[str, Any]:
         """Retrieve module data from the router (backward compatibility)."""
         return await self._data_fetcher.get_all_data(module_list)
+
+    async def get_router_data(self, modules: list[str] | None = None) -> RouterData:
+        """Retrieve a typed router snapshot."""
+        return await self._data_fetcher.get_router_data(modules)
 
     @property
     def session(self) -> aiohttp.ClientSession:
@@ -104,32 +117,17 @@ class TwibiAPI:
         return TwibiConnection.get_timestamp()
 
     # Enhanced methods using new architecture
-    async def get_node_info(self) -> list[dict[str, Any]]:
-        """Get node information with improved error handling."""
-        try:
-            nodes = await self._data_fetcher.get_node_info()
-            return [node.to_dict() for node in nodes]
-        except Exception as err:
-            _LOGGER.error("Failed to get node info: %s", err)
-            raise APIError(f"Failed to get node info: {err}") from err
+    async def get_node_info(self) -> list[NodeInfo]:
+        """Get node information."""
+        return await self._data_fetcher.get_node_info()
 
-    async def get_online_devices(self) -> list[dict[str, Any]]:
-        """Get online devices with improved filtering."""
-        try:
-            devices = await self._data_fetcher.get_online_devices()
-            return [device.to_dict() for device in devices]
-        except Exception as err:
-            _LOGGER.error("Failed to get online devices: %s", err)
-            raise APIError(f"Failed to get online devices: {err}") from err
+    async def get_online_devices(self) -> list[OnlineDevice]:
+        """Get online devices."""
+        return await self._data_fetcher.get_online_devices()
 
-    async def get_wan_statistics(self) -> list[dict[str, Any]]:
-        """Get WAN statistics with improved data handling."""
-        try:
-            stats = await self._data_fetcher.get_wan_statistics()
-            return [stat.to_dict() for stat in stats]
-        except Exception as err:
-            _LOGGER.error("Failed to get WAN statistics: %s", err)
-            raise APIError(f"Failed to get WAN statistics: {err}") from err
+    async def get_wan_statistics(self) -> list[WanStatistic]:
+        """Get WAN statistics."""
+        return await self._data_fetcher.get_wan_statistics()
 
     async def set_led_status(self, serial: str, enabled: bool) -> bool:
         """Set LED status for a node."""
@@ -151,8 +149,8 @@ class TwibiAPI:
         self,
         ssid: str,
         password: str,
-        security_type: str = "aes",
-        security_mode: str = "psk psk2"
+        security_type: WifiSecurityType = WifiSecurityType.AES,
+        security_mode: WifiSecurityMode = WifiSecurityMode.PSK_PSK2,
     ) -> bool:
         """Set WiFi configuration."""
         return await self._controller.set_wifi_config(
@@ -163,8 +161,8 @@ class TwibiAPI:
         self,
         ssid: str,
         password: str,
-        security_type: str = "aes",
-        security_mode: str = "psk psk2",
+        security_type: WifiSecurityType = WifiSecurityType.AES,
+        security_mode: WifiSecurityMode = WifiSecurityMode.PSK_PSK2,
     ) -> CommandResult:
         """Set WiFi configuration and return a typed result."""
         return await self._controller.set_wifi_config_result(
@@ -179,8 +177,8 @@ class TwibiAPI:
         enabled: bool,
         ssid: str | None = None,
         password: str | None = None,
-        time_restriction: str = "always",
-        bandwidth_limit: str = "0"
+        time_restriction: GuestNetworkTimeRestriction = GuestNetworkTimeRestriction.ALWAYS,
+        bandwidth_limit: GuestNetworkBandwidthLimit = GuestNetworkBandwidthLimit.UNLIMITED,
     ) -> bool:
         """Configure guest network."""
         return await self._controller.set_guest_network(
@@ -192,8 +190,8 @@ class TwibiAPI:
         enabled: bool,
         ssid: str | None = None,
         password: str | None = None,
-        time_restriction: str = "always",
-        bandwidth_limit: str = "0",
+        time_restriction: GuestNetworkTimeRestriction = GuestNetworkTimeRestriction.ALWAYS,
+        bandwidth_limit: GuestNetworkBandwidthLimit = GuestNetworkBandwidthLimit.UNLIMITED,
     ) -> CommandResult:
         """Configure guest network and return a typed result."""
         return await self._controller.set_guest_network_result(
@@ -212,32 +210,17 @@ class TwibiAPI:
         """Enable or disable UPnP and return a typed result."""
         return await self._controller.set_upnp_status_result(enabled)
 
-    async def get_device_by_mac(self, mac: str) -> dict[str, Any] | None:
+    async def get_device_by_mac(self, mac: str) -> OnlineDevice | None:
         """Get specific device by MAC address."""
-        try:
-            device = await self._data_fetcher.get_device_by_mac(mac)
-            return device.to_dict() if device else None
-        except Exception as err:
-            _LOGGER.error("Failed to get device by MAC %s: %s", mac, err)
-            return None
+        return await self._data_fetcher.get_device_by_mac(mac)
 
-    async def get_primary_node(self) -> dict[str, Any] | None:
+    async def get_primary_node(self) -> NodeInfo | None:
         """Get the primary router node."""
-        try:
-            node = await self._data_fetcher.get_primary_node()
-            return node.to_dict() if node else None
-        except Exception as err:
-            _LOGGER.error("Failed to get primary node: %s", err)
-            return None
+        return await self._data_fetcher.get_primary_node()
 
-    async def get_secondary_nodes(self) -> list[dict[str, Any]]:
+    async def get_secondary_nodes(self) -> list[NodeInfo]:
         """Get all secondary router nodes."""
-        try:
-            nodes = await self._data_fetcher.get_secondary_nodes()
-            return [node.to_dict() for node in nodes]
-        except Exception as err:
-            _LOGGER.error("Failed to get secondary nodes: %s", err)
-            return []
+        return await self._data_fetcher.get_secondary_nodes()
 
     def invalidate_auth(self) -> None:
         """Invalidate current authentication state."""
@@ -246,11 +229,9 @@ class TwibiAPI:
     async def health_check(self) -> bool:
         """Perform a health check on the API connection."""
         try:
-            await self._connection.ensure_authenticated()
-            # Try to fetch minimal data to verify connection - just node_info which should always exist
             basic_data = await self._connection.get_data(["node_info"])
-            # Verify we got valid data
-            return basic_data and "node_info" in basic_data and basic_data["node_info"]
-        except Exception as err:
-            _LOGGER.warning("Health check failed: %s", err)
+        except APIError as err:
+            _LOGGER.debug("Health check failed: %s", err)
             return False
+
+        return bool(basic_data.get("node_info"))
