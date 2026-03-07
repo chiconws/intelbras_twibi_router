@@ -17,8 +17,6 @@ DEFAULT_EXCLUDE_WIRED = True
 
 MANUFACTURER = "Intelbras"
 
-MODULES = ["node_info", "online_list", "wan_statistic"]
-
 
 NODE_SCHEMA = vol.Schema(
     {

@@ -31,8 +31,6 @@ PLATFORMS = [
     Platform.SWITCH,
 ]
 
-MODULES = ["node_info", "online_list", "wan_statistic"]
-
 _LOGGER = logging.getLogger(__name__)
 
 

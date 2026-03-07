@@ -10,7 +10,6 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 
 from .api import APIError, AuthenticationError, ConnectionError as TwibiConnectionError
 from .api.models import NodeInfo, OnlineDevice, RouterData, WanStatistic
-from .const import MAIN_SCHEMA
 from .twibi_api import TwibiAPI
 
 _LOGGER = logging.getLogger(__name__)
@@ -62,28 +61,7 @@ class TwibiCoordinator(DataUpdateCoordinator[RouterData]):
                     if not health_ok:
                         raise TwibiConnectionError("Health check failed")
 
-                # Fetch data using split API calls to reduce instability
-                # Start with basic modules that should always work
-                data = await self.api.get_data(["node_info", "online_list", "wan_statistic"])
-
-                # Try to fetch extended modules one by one to avoid overloading the router
-                extended_modules = ["wan_info", "lan_info", "wifi", "guest_info", "upnp_info"]
-                for module in extended_modules:
-                    try:
-                        extended_data = await self.api.get_data([module])
-                        data.update(extended_data)
-                        # Small delay between requests to avoid overwhelming the router
-                        await asyncio.sleep(0.1)
-                    except Exception:
-                            # Continue with other modules even if one fails
-                        continue
-
-                # Validate data structure
-                validated_data = MAIN_SCHEMA(data)
-                typed_data = RouterData.from_dict(
-                    validated_data,
-                    exclude_wired=self.api.exclude_wired,
-                )
+                typed_data = await self.api.get_router_snapshot()
 
                 # Check for router restart detection
                 if self._detect_router_restart(typed_data):

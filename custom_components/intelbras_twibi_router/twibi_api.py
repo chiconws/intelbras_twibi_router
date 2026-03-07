@@ -1,6 +1,7 @@
 """Improved API module for interacting with Twibi Router."""
 
 import logging
+from collections.abc import Sequence
 from typing import Any
 
 import aiohttp
@@ -10,6 +11,7 @@ from .api.const import DEFAULT_TIMEOUT
 from .api.enums import (
     GuestNetworkBandwidthLimit,
     GuestNetworkTimeRestriction,
+    RouterModule,
     WifiSecurityMode,
     WifiSecurityType,
 )
@@ -77,13 +79,20 @@ class TwibiAPI:
         """Authenticate with the router and return a typed result."""
         return await self._connection.authenticate()
 
-    async def get_data(self, module_list: list[str]) -> dict[str, Any]:
+    async def get_data(self, module_list: Sequence[RouterModule]) -> dict[str, Any]:
         """Retrieve raw module data from the router."""
         return await self._data_fetcher.get_all_data(module_list)
 
-    async def get_router_data(self, modules: list[str] | None = None) -> RouterData:
+    async def get_router_data(
+        self,
+        modules: Sequence[RouterModule] | None = None,
+    ) -> RouterData:
         """Retrieve a typed router snapshot."""
         return await self._data_fetcher.get_router_data(modules)
+
+    async def get_router_snapshot(self) -> RouterData:
+        """Retrieve the default typed router snapshot used by the coordinator."""
+        return await self._data_fetcher.get_router_snapshot()
 
     async def get_node_info(self) -> list[NodeInfo]:
         """Get node information."""
@@ -197,9 +206,9 @@ class TwibiAPI:
     async def health_check(self) -> bool:
         """Perform a health check on the API connection."""
         try:
-            basic_data = await self._connection.get_data(["node_info"])
+            basic_data = await self._data_fetcher.get_all_data([RouterModule.NODE_INFO])
         except APIError as err:
             _LOGGER.debug("Health check failed: %s", err)
             return False
 
-        return bool(basic_data.get("node_info"))
+        return bool(basic_data.get(RouterModule.NODE_INFO))

@@ -1,16 +1,13 @@
 """Runtime data helpers for the Twibi integration."""
-from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, cast
+from typing import cast
 
 from homeassistant.core import HomeAssistant
 
 from .const import DOMAIN
-
-if TYPE_CHECKING:
-    from .coordinator import TwibiCoordinator
-    from .twibi_api import TwibiAPI
+from .coordinator import TwibiCoordinator
+from .twibi_api import TwibiAPI
 
 
 @dataclass(slots=True)

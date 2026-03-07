@@ -15,6 +15,28 @@ class CommandErrorCode(StrEnum):
     SUCCESS = "0"
 
 
+class RouterModule(StrEnum):
+    """Known data modules exposed by the Twibi API."""
+
+    NODE_INFO = "node_info"
+    ONLINE_LIST = "online_list"
+    WAN_STATISTIC = "wan_statistic"
+    WAN_INFO = "wan_info"
+    LAN_INFO = "lan_info"
+    WIFI = "wifi"
+    GUEST_INFO = "guest_info"
+    STATIC_IP = "static_ip"
+    PORT_LIST = "port_list"
+    UPNP_INFO = "upnp_info"
+    TR069_INFO = "tr069_info"
+    REMOTE_WEB = "remote_web"
+    DNS_CONF = "dns_conf"
+    MAC_CLONE = "mac_clone"
+    GET_VERSION = "getversion"
+    NET_LINK_STATUS = "net_link_status"
+    LINK_MODULE = "link_module"
+
+
 class NodeRole(StrEnum):
     """Known roles returned by the Twibi node API."""
 

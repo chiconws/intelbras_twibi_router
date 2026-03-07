@@ -9,6 +9,7 @@ from .enums import (
     GuestNetworkState,
     GuestNetworkTimeRestriction,
     NodeLedState,
+    RouterModule,
     UpnpState,
     WifiSecurityMode,
     WifiSecurityType,
@@ -108,7 +109,7 @@ class TwibiController:
     ) -> CommandResult:
         """Set WiFi configuration and return a typed result."""
         payload = self._build_payload(
-            "wifi",
+            RouterModule.WIFI,
             {
                 "ssid": ssid,
                 "pass": password,
@@ -148,7 +149,7 @@ class TwibiController:
     ) -> CommandResult:
         """Configure guest network settings and return a typed result."""
         payload = self._build_payload(
-            "guest_info",
+            RouterModule.GUEST_INFO,
             {
                 "guest_en": (
                     GuestNetworkState.ENABLED
@@ -162,14 +163,14 @@ class TwibiController:
 
         # Always include SSID and password to match web UI format exactly
         # Use empty string if not provided, just like the web UI does
-        payload["guest_info"]["guest_ssid"] = ssid if ssid else ""
-        payload["guest_info"]["guest_pass"] = password if password else ""
+        payload[RouterModule.GUEST_INFO]["guest_ssid"] = ssid if ssid else ""
+        payload[RouterModule.GUEST_INFO]["guest_pass"] = password if password else ""
 
         _LOGGER.info(
             "Guest network API payload: %s",
             {
                 key: "***" if key == "guest_pass" else value
-                for key, value in payload["guest_info"].items()
+                for key, value in payload[RouterModule.GUEST_INFO].items()
             },
         )
 
@@ -199,7 +200,7 @@ class TwibiController:
     async def set_upnp_status_result(self, enabled: bool) -> CommandResult:
         """Enable or disable UPnP and return a typed result."""
         payload = self._build_payload(
-            "upnp_info",
+            RouterModule.UPNP_INFO,
             {
                 "upnp_en": (
                     UpnpState.ENABLED

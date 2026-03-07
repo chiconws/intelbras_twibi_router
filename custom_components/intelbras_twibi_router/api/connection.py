@@ -1,6 +1,7 @@
 """Connection management for Twibi Router API."""
 
 import asyncio
+from collections.abc import Sequence
 from datetime import datetime
 import hashlib
 import json
@@ -10,6 +11,7 @@ from typing import Any
 import aiohttp
 
 from .const import DEFAULT_TIMEOUT
+from .enums import RouterModule
 from .models import AuthenticationResult, CommandResult
 
 _LOGGER = logging.getLogger(__name__)
@@ -98,12 +100,15 @@ class TwibiConnection:
             self._authenticated = False
             raise ConnectionError("Failed to connect to router") from err
 
-    async def get_data(self, modules: list[str]) -> dict[str, Any]:
+    async def get_data(
+        self,
+        modules: Sequence[str | RouterModule],
+    ) -> dict[str, Any]:
         """Fetch data from specified modules."""
         await self.ensure_authenticated()
 
         try:
-            url = self.get_url + ",".join(modules)
+            url = self.get_url + ",".join(str(module) for module in modules)
             _LOGGER.debug("Fetching data from URL: %s", url)
 
             async with self.session.get(url, timeout=self.timeout) as response:
