@@ -1,7 +1,7 @@
 """Data models for Twibi Router API."""
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Self
 
 from .enums import (
     AuthenticationErrorCode,
@@ -30,7 +30,7 @@ class AuthenticationResult:
     raw: dict[str, Any] | None = None
 
     @classmethod
-    def from_response(cls, data: dict[str, Any]) -> "AuthenticationResult":
+    def from_response(cls, data: dict[str, Any]) -> Self:
         """Build an authentication result from a router response."""
         errcode = data.get("errcode")
         errcode_str = None if errcode is None else str(errcode)
@@ -52,7 +52,7 @@ class CommandResult:
     raw: dict[str, Any] | None = None
 
     @classmethod
-    def from_response(cls, command: str, data: dict[str, Any]) -> "CommandResult":
+    def from_response(cls, command: str, data: dict[str, Any]) -> Self:
         """Build a command result from a router response."""
         errcode = data.get("errcode")
         errcode_str = None if errcode is None else str(errcode)
@@ -64,7 +64,7 @@ class CommandResult:
         )
 
     @classmethod
-    def from_error(cls, command: str, detail: str) -> "CommandResult":
+    def from_error(cls, command: str, detail: str) -> Self:
         """Build a failed command result from a local error."""
         return cls(command=command, success=False, detail=detail)
 
@@ -111,10 +111,10 @@ class NodeInfo:
     down_speed: str = ""
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "NodeInfo":
+    def from_dict(cls, data: dict[str, Any]) -> Self:
         """Create NodeInfo from API response dictionary."""
         role = NodeRole(data["role"])
-        link_quality = data["link_quality"] if role is NodeRole.SECONDARY else None
+        link_quality = data.get("link_quality") if role is NodeRole.SECONDARY else None
 
         return cls(
             id=data["id"],
@@ -204,7 +204,7 @@ class OnlineDevice:
     wifi_mode: WifiMode = WifiMode.WIRED
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "OnlineDevice":
+    def from_dict(cls, data: dict[str, Any]) -> Self:
         """Create OnlineDevice from API response dictionary."""
         wifi_mode = WifiMode(data["wifi_mode"])
 
@@ -265,7 +265,7 @@ class WanStatistic:
     total_download: str
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "WanStatistic":
+    def from_dict(cls, data: dict[str, Any]) -> Self:
         """Create WanStatistic from API response dictionary."""
         return cls(
             id=data["id"],
@@ -312,7 +312,7 @@ class WifiInfo:
     password: str
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "WifiInfo":
+    def from_dict(cls, data: dict[str, Any]) -> Self:
         """Create WifiInfo from API response dictionary."""
         return cls(
             ssid=data["ssid"],
@@ -342,7 +342,7 @@ class GuestInfo:
     bandwidth_limit: str
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "GuestInfo":
+    def from_dict(cls, data: dict[str, Any]) -> Self:
         """Create GuestInfo from API response dictionary."""
         return cls(
             enabled=data["guest_en"] == GuestNetworkState.ENABLED,
@@ -381,7 +381,7 @@ class LanInfo:
     dns2: str
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "LanInfo":
+    def from_dict(cls, data: dict[str, Any]) -> Self:
         """Create LanInfo from API response dictionary."""
         return cls(
             lan_ip=data["lan_ip"],
@@ -412,7 +412,7 @@ class WanInfo:
     ipv6_second_dns: str
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "WanInfo":
+    def from_dict(cls, data: dict[str, Any]) -> Self:
         """Create WanInfo from API response dictionary."""
         return cls(
             id=data["id"],
@@ -440,7 +440,7 @@ class VersionInfo:
     system_has_new: bool
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "VersionInfo":
+    def from_dict(cls, data: dict[str, Any]) -> Self:
         """Create VersionInfo from API response dictionary."""
         return cls(
             has_new=data["hasNew"] == FirmwareUpdateState.UPDATE_AVAILABLE,
@@ -459,7 +459,7 @@ class NetworkLinkStatus:
     id: str
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "NetworkLinkStatus":
+    def from_dict(cls, data: dict[str, Any]) -> Self:
         """Create NetworkLinkStatus from API response dictionary."""
         return cls(
             net_status=NetworkLinkState(data["net_status"]),
@@ -479,7 +479,7 @@ class UpnpInfo:
     upnp_enabled: bool
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "UpnpInfo":
+    def from_dict(cls, data: dict[str, Any]) -> Self:
         """Create UpnpInfo from API response dictionary."""
         return cls(
             upnp_enabled=data["upnp_en"] == UpnpState.ENABLED,
@@ -507,7 +507,7 @@ class RouterData:
         data: dict[str, Any],
         *,
         exclude_wired: bool = False,
-    ) -> "RouterData":
+    ) -> Self:
         """Build a typed router snapshot from a validated API payload."""
         online_list = [OnlineDevice.from_dict(device) for device in data["online_list"]]
         if exclude_wired:

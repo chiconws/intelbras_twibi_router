@@ -9,7 +9,7 @@ from typing import Any
 
 import aiohttp
 
-from ..const import DEFAULT_TIMEOUT
+from .const import DEFAULT_TIMEOUT
 from .models import AuthenticationResult, CommandResult
 
 _LOGGER = logging.getLogger(__name__)
@@ -94,7 +94,7 @@ class TwibiConnection:
                 _LOGGER.debug("Successfully authenticated to Twibi router at %s", self.host)
                 return result
 
-        except aiohttp.ClientError as err:
+        except (asyncio.TimeoutError, aiohttp.ClientError) as err:
             self._authenticated = False
             raise ConnectionError("Failed to connect to router") from err
 
@@ -115,7 +115,7 @@ class TwibiConnection:
 
                 return self._decode_json_response(raw_data, reset_auth_on_html=True)
 
-        except aiohttp.ClientError as err:
+        except (asyncio.TimeoutError, aiohttp.ClientError) as err:
             # Reset authentication on connection errors
             self._authenticated = False
             raise ConnectionError(f"Failed to fetch data: {err}") from err
@@ -133,7 +133,7 @@ class TwibiConnection:
                 data = self._decode_json_response(raw_response, reset_auth_on_html=True)
                 return CommandResult.from_response(command, data)
 
-        except aiohttp.ClientError as err:
+        except (asyncio.TimeoutError, aiohttp.ClientError) as err:
             # Reset authentication on connection errors
             self._authenticated = False
             raise ConnectionError(f"Failed to send command: {err}") from err

@@ -5,25 +5,24 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .api.enums import NodeLedState, NodeRole
 from .const import DOMAIN
-from .twibi_api import TwibiAPI
+from .runtime_data import get_runtime_data
 
 
 async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
     """Set up LED control switch for Twibi nodes."""
-    entry_data = hass.data[DOMAIN][entry.entry_id]
-    coordinator = entry_data["coordinator"]
-    host = entry_data['host']
-    api = entry_data['api']
+    runtime_data = get_runtime_data(hass, entry.entry_id)
+    coordinator = runtime_data.coordinator
+    primary_device_identifier = runtime_data.primary_device_identifier
 
     entities = []
     for node in coordinator.data.node_info:
         serial = node.serial
         if node.role is NodeRole.PRIMARY:
-            device_id = (DOMAIN, host)
+            device_id = (DOMAIN, primary_device_identifier)
         else:
             device_id = (DOMAIN, serial)
         entities.append(
-            TwibiLedLight(coordinator, api, serial, device_id)
+            TwibiLedLight(coordinator, serial, device_id)
         )
 
     async_add_entities(entities)
@@ -34,23 +33,19 @@ class TwibiLedLight(CoordinatorEntity, LightEntity):
     def __init__(
         self,
         coordinator,
-        api: TwibiAPI,
         serial: str,
         device_id: tuple,
     ) -> None:
         """Initialize the Twibi LED light."""
 
         super().__init__(coordinator)
-        self._api = api
         self._serial = serial
         self._attr_unique_id = f"led_{serial}"
         self._attr_name = "Status LED"
         self._attr_icon = "mdi:led-on"
-        self._attr_state_class = "on_off"
         self._attr_supported_color_modes = {ColorMode.ONOFF}
         self._attr_color_mode = ColorMode.ONOFF
         self._device_id = device_id
-        self.entity_id = f"light.status_led_{serial[-4:]}"
 
     @property
     def device_info(self):

@@ -39,6 +39,7 @@ class TwibiCoordinator(DataUpdateCoordinator[RouterData]):
             update_interval=update_interval,
         )
         self.api = api
+        self.known_macs: set[str] = set()
         self.max_retries = max_retries
         self.base_retry_delay = base_retry_delay
         self._consecutive_failures = 0
@@ -63,13 +64,13 @@ class TwibiCoordinator(DataUpdateCoordinator[RouterData]):
 
                 # Fetch data using split API calls to reduce instability
                 # Start with basic modules that should always work
-                data = await self.api.get_modules(["node_info", "online_list", "wan_statistic"])
+                data = await self.api.get_data(["node_info", "online_list", "wan_statistic"])
 
                 # Try to fetch extended modules one by one to avoid overloading the router
                 extended_modules = ["wan_info", "lan_info", "wifi", "guest_info", "upnp_info"]
                 for module in extended_modules:
                     try:
-                        extended_data = await self.api.get_modules([module])
+                        extended_data = await self.api.get_data([module])
                         data.update(extended_data)
                         # Small delay between requests to avoid overwhelming the router
                         await asyncio.sleep(0.1)
@@ -333,14 +334,24 @@ class TwibiCoordinator(DataUpdateCoordinator[RouterData]):
 
         for serial, new_node in new_nodes.items():
             if serial in old_nodes:
-                old_uptime = int(old_nodes[serial].uptime)
-                new_uptime = int(new_node.uptime)
+                old_uptime = self._parse_uptime(old_nodes[serial].uptime)
+                new_uptime = self._parse_uptime(new_node.uptime)
+                if old_uptime is None or new_uptime is None:
+                    continue
 
                 # If new uptime is significantly less than old uptime, router restarted
                 if old_uptime > 0 and new_uptime < old_uptime and (old_uptime - new_uptime) > 60:
                     return True
 
         return False
+
+    @staticmethod
+    def _parse_uptime(value: str) -> int | None:
+        """Safely parse uptime values returned by the router."""
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return None
 
     @property
     def is_restart_recovery_mode(self) -> bool:

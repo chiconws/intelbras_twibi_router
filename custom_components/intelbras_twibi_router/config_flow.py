@@ -129,8 +129,8 @@ class TwibiConfigFlow(ConfigFlow, domain=DOMAIN):
                 )
 
                 # Test authentication
-                login_success = await self._api.login()
-                if not login_success:
+                auth_result = await self._api.authenticate()
+                if not auth_result.authenticated:
                     errors["base"] = "Endereço IP ou senha inválidos."
                 else:
                     # Store the user input for later

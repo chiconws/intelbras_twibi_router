@@ -1,6 +1,5 @@
 """Constants for the Twibi Router integration."""
 
-import aiohttp
 import voluptuous as vol
 
 DOMAIN = "intelbras_twibi_router"
@@ -15,7 +14,6 @@ CONF_TRACK_ALL_DEVICES = "_track_all_devices"
 DEFAULT_TWIBI_IP_ADDRESS = "192.168.5.1"
 DEFAULT_UPDATE_INTERVAL = 30
 DEFAULT_EXCLUDE_WIRED = True
-DEFAULT_TIMEOUT = aiohttp.ClientTimeout(total=5)
 
 MANUFACTURER = "Intelbras"
 

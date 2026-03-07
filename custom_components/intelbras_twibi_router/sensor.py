@@ -17,8 +17,9 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
 
 from .api.enums import NodeNetworkStatus, NodeRole, RouterConnectionState
-from .const import DOMAIN
 from .coordinator import TwibiCoordinator
+from .const import DOMAIN
+from .runtime_data import get_runtime_data
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -29,9 +30,9 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up Twibi Router sensor entities."""
-    entry_data = hass.data[DOMAIN][entry.entry_id]
-    coordinator: TwibiCoordinator = entry_data["coordinator"]
-    host = entry_data["host"]
+    runtime_data = get_runtime_data(hass, entry.entry_id)
+    coordinator: TwibiCoordinator = runtime_data.coordinator
+    primary_device_identifier = runtime_data.primary_device_identifier
 
     entities = []
 
@@ -40,8 +41,8 @@ async def async_setup_entry(
         for wan_stat in coordinator.data.wan_statistic:
             wan_id = wan_stat.id
             entities.extend([
-                TwibiWanUploadSpeedSensor(coordinator, host, wan_id),
-                TwibiWanDownloadSpeedSensor(coordinator, host, wan_id),
+                TwibiWanUploadSpeedSensor(coordinator, primary_device_identifier, wan_id),
+                TwibiWanDownloadSpeedSensor(coordinator, primary_device_identifier, wan_id),
             ])
 
     # Router information sensors - assign to correct device
@@ -51,8 +52,9 @@ async def async_setup_entry(
             node_serial = node.serial
             serial_suffix = node_serial[-4:] if node_serial else node_id
             is_primary = node.role is NodeRole.PRIMARY
-            # Use host for the primary router and serial for secondary routers.
-            device_identifier = host if is_primary else node_serial
+            # Use the stable primary identifier for the main router and serial for
+            # secondary routers.
+            device_identifier = primary_device_identifier if is_primary else node_serial
 
             entities.extend([
                 TwibiRouterUptimeSensor(coordinator, device_identifier, node_id, is_primary, serial_suffix, node_serial),
@@ -67,24 +69,20 @@ async def async_setup_entry(
 
     # Network information sensors
     entities.extend([
-        TwibiConnectedDevicesSensor(coordinator, host),
-        TwibiNetworkStatusSensor(coordinator, host),
+        TwibiConnectedDevicesSensor(coordinator, primary_device_identifier),
+        TwibiNetworkStatusSensor(coordinator, primary_device_identifier),
     ])
 
     # LAN information sensor
-    if coordinator.data.lan_info is not None:
-        entities.append(TwibiLanInfoSensor(coordinator, host))
+    entities.append(TwibiLanInfoSensor(coordinator, primary_device_identifier))
 
     # WAN information sensor
-    if coordinator.data.wan_info:
-        entities.append(TwibiWanInfoSensor(coordinator, host))
+    entities.append(TwibiWanInfoSensor(coordinator, primary_device_identifier))
 
     # WiFi QR Code sensors
-    if coordinator.data.wifi is not None:
-        entities.append(TwibiWifiQRCodeSensor(coordinator, host))
+    entities.append(TwibiWifiQRCodeSensor(coordinator, primary_device_identifier))
 
-    if coordinator.data.guest_info is not None:
-        entities.append(TwibiGuestWifiQRCodeSensor(coordinator, host))
+    entities.append(TwibiGuestWifiQRCodeSensor(coordinator, primary_device_identifier))
 
     async_add_entities(entities)
 
@@ -95,22 +93,17 @@ class TwibiBaseSensor(CoordinatorEntity, SensorEntity):
     def __init__(
         self,
         coordinator: TwibiCoordinator,
-        host: str,
+        device_identifier: str,
         sensor_type: str,
         name: str,
     ) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator)
-        self._host = host
+        self._device_identifier = device_identifier
         self._sensor_type = sensor_type
         self._attr_name = name
-        self._attr_unique_id = f"{host}_{sensor_type}"
-        self._attr_device_info = {
-            "identifiers": {(DOMAIN, host)},
-            "name": f"Twibi Router {host}",
-            "manufacturer": "Intelbras",
-            "model": "Twibi Router",
-        }
+        self._attr_unique_id = f"{device_identifier}_{sensor_type}"
+        self._attr_device_info = {"identifiers": {(DOMAIN, device_identifier)}}
 
 
 class TwibiWanUploadSpeedSensor(TwibiBaseSensor):
@@ -159,21 +152,24 @@ class TwibiRouterUptimeSensor(TwibiBaseSensor):
         self._is_primary = is_primary
         self._attr_device_class = SensorDeviceClass.TIMESTAMP
         self._attr_native_value = None
-        # Set entity_id to match LED pattern exactly
-        self.entity_id = f"sensor.uptime_{full_serial[-4:]}"
-
-        # Store previous values to detect real changes
-        self._last_uptime_seconds = None
         self._attr_should_poll = False  # We rely on coordinator updates
+        self._sync_native_value()
 
         # Override device info for proper assignment
         if not is_primary:
+            runtime_data = get_runtime_data(
+                coordinator.hass,
+                coordinator.config_entry.entry_id,
+            )
             self._attr_device_info = {
                 "identifiers": {(DOMAIN, device_identifier)},
                 "name": f"Twibi Router Secondary {device_identifier[-4:]}",
                 "manufacturer": "Intelbras",
                 "model": "Twibi Router",
-                "via_device": (DOMAIN, coordinator.hass.data[DOMAIN][coordinator.config_entry.entry_id]["host"]),
+                "via_device": (
+                    DOMAIN,
+                    runtime_data.primary_device_identifier,
+                ),
             }
 
     def _uptime_value_changed(self, old_value: datetime | None, new_value: datetime | None) -> bool:
@@ -187,28 +183,34 @@ class TwibiRouterUptimeSensor(TwibiBaseSensor):
 
         return old_value != new_value
 
+    def _startup_time_from_coordinator(self) -> datetime | None:
+        """Return the current startup timestamp derived from router uptime."""
+        node = self.coordinator.data.get_node_by_id(self._node_id)
+        if node is None:
+            return None
+
+        try:
+            current_uptime = int(node.uptime)
+        except (ValueError, TypeError):
+            return None
+
+        if current_uptime <= 0:
+            return None
+
+        return dt_util.now() - timedelta(seconds=current_uptime)
+
+    def _sync_native_value(self) -> None:
+        """Refresh the cached timestamp from coordinator data."""
+        new_startup_time = self._startup_time_from_coordinator()
+        if self._uptime_value_changed(self._attr_native_value, new_startup_time):
+            self._attr_native_value = new_startup_time
+        elif new_startup_time is None:
+            self._attr_native_value = None
+
     def _handle_coordinator_update(self) -> None:
         """Handle updated data from the coordinator."""
-        # Get current uptime
-        node = self.coordinator.data.get_node_by_id(self._node_id)
-        current_uptime = None
-
-        if node is not None:
-            try:
-                current_uptime = int(node.uptime)
-            except (ValueError, TypeError):
-                current_uptime = None
-
-        if current_uptime is not None and current_uptime > 0:
-            # Calculate new startup time
-            new_startup_time = dt_util.now() - timedelta(seconds=current_uptime)
-
-            # Only update if the value has changed significantly
-            if self._uptime_value_changed(self._attr_native_value, new_startup_time):
-                self._last_uptime_seconds = current_uptime
-                self._attr_native_value = new_startup_time
-                # Only call parent update if value actually changed significantly
-                super()._handle_coordinator_update()
+        self._sync_native_value()
+        super()._handle_coordinator_update()
 
     @property
     def native_value(self) -> datetime | None:
@@ -242,17 +244,21 @@ class TwibiRouterSerialSensor(TwibiBaseSensor):
         super().__init__(coordinator, device_identifier, f"router_serial_{full_serial[-4:]}", "Serial Number")
         self._node_id = node_id
         self._is_primary = is_primary
-        # Set entity_id to match LED pattern exactly
-        self.entity_id = f"sensor.serial_number_{full_serial[-4:]}"
-
         # Override device info for proper assignment
         if not is_primary:
+            runtime_data = get_runtime_data(
+                coordinator.hass,
+                coordinator.config_entry.entry_id,
+            )
             self._attr_device_info = {
                 "identifiers": {(DOMAIN, device_identifier)},
                 "name": f"Twibi Router Secondary {device_identifier[-4:]}",
                 "manufacturer": "Intelbras",
                 "model": "Twibi Router",
-                "via_device": (DOMAIN, coordinator.hass.data[DOMAIN][coordinator.config_entry.entry_id]["host"]),
+                "via_device": (
+                    DOMAIN,
+                    runtime_data.primary_device_identifier,
+                ),
             }
 
     @property
@@ -272,17 +278,21 @@ class TwibiRouterLinkQualitySensor(TwibiBaseSensor):
         self._is_primary = is_primary
         self._attr_native_unit_of_measurement = "dBm"
         self._attr_state_class = SensorStateClass.MEASUREMENT
-        # Set entity_id to match LED pattern exactly
-        self.entity_id = f"sensor.link_quality_{full_serial[-4:]}"
-
         # Override device info for proper assignment
         if not is_primary:
+            runtime_data = get_runtime_data(
+                coordinator.hass,
+                coordinator.config_entry.entry_id,
+            )
             self._attr_device_info = {
                 "identifiers": {(DOMAIN, device_identifier)},
                 "name": f"Twibi Router Secondary {device_identifier[-4:]}",
                 "manufacturer": "Intelbras",
                 "model": "Twibi Router",
-                "via_device": (DOMAIN, coordinator.hass.data[DOMAIN][coordinator.config_entry.entry_id]["host"]),
+                "via_device": (
+                    DOMAIN,
+                    runtime_data.primary_device_identifier,
+                ),
             }
 
     @property
@@ -300,9 +310,14 @@ class TwibiRouterLinkQualitySensor(TwibiBaseSensor):
 class TwibiConnectedDevicesSensor(TwibiBaseSensor):
     """Connected devices count sensor."""
 
-    def __init__(self, coordinator: TwibiCoordinator, host: str) -> None:
+    def __init__(self, coordinator: TwibiCoordinator, device_identifier: str) -> None:
         """Initialize the sensor."""
-        super().__init__(coordinator, host, "connected_devices", "Connected Devices")
+        super().__init__(
+            coordinator,
+            device_identifier,
+            "connected_devices",
+            "Connected Devices",
+        )
         self._attr_state_class = SensorStateClass.MEASUREMENT
 
     @property
@@ -328,9 +343,9 @@ class TwibiConnectedDevicesSensor(TwibiBaseSensor):
 class TwibiNetworkStatusSensor(TwibiBaseSensor):
     """Network status sensor."""
 
-    def __init__(self, coordinator: TwibiCoordinator, host: str) -> None:
+    def __init__(self, coordinator: TwibiCoordinator, device_identifier: str) -> None:
         """Initialize the sensor."""
-        super().__init__(coordinator, host, "network_status", "Network Status")
+        super().__init__(coordinator, device_identifier, "network_status", "Network Status")
         self._attr_device_class = SensorDeviceClass.ENUM
         self._attr_options = list(RouterConnectionState)
 
@@ -351,15 +366,20 @@ class TwibiNetworkStatusSensor(TwibiBaseSensor):
 class TwibiLanInfoSensor(TwibiBaseSensor):
     """LAN information sensor."""
 
-    def __init__(self, coordinator: TwibiCoordinator, host: str) -> None:
+    def __init__(self, coordinator: TwibiCoordinator, device_identifier: str) -> None:
         """Initialize the sensor."""
-        super().__init__(coordinator, host, "lan_info", "LAN Information")
+        super().__init__(coordinator, device_identifier, "lan_info", "LAN Information")
 
     @property
     def native_value(self) -> str:
         """Return the LAN IP address."""
         lan_info = self.coordinator.data.lan_info
         return lan_info.lan_ip if lan_info else ""
+
+    @property
+    def available(self) -> bool:
+        """Return whether LAN data is currently available."""
+        return self.coordinator.last_update_success and self.coordinator.data.lan_info is not None
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -382,9 +402,9 @@ class TwibiLanInfoSensor(TwibiBaseSensor):
 class TwibiWanInfoSensor(TwibiBaseSensor):
     """WAN information sensor."""
 
-    def __init__(self, coordinator: TwibiCoordinator, host: str) -> None:
+    def __init__(self, coordinator: TwibiCoordinator, device_identifier: str) -> None:
         """Initialize the sensor."""
-        super().__init__(coordinator, host, "wan_info", "WAN Information")
+        super().__init__(coordinator, device_identifier, "wan_info", "WAN Information")
 
     @property
     def native_value(self) -> str:
@@ -392,6 +412,11 @@ class TwibiWanInfoSensor(TwibiBaseSensor):
         if self.coordinator.data.wan_info:
             return self.coordinator.data.wan_info[0].ip
         return ""
+
+    @property
+    def available(self) -> bool:
+        """Return whether WAN data is currently available."""
+        return self.coordinator.last_update_success and bool(self.coordinator.data.wan_info)
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -412,9 +437,9 @@ class TwibiWanInfoSensor(TwibiBaseSensor):
 class TwibiWifiQRCodeSensor(TwibiBaseSensor):
     """WiFi QR Code sensor."""
 
-    def __init__(self, coordinator: TwibiCoordinator, host: str) -> None:
+    def __init__(self, coordinator: TwibiCoordinator, device_identifier: str) -> None:
         """Initialize the sensor."""
-        super().__init__(coordinator, host, "wifi_qr_code", "WiFi QR Code")
+        super().__init__(coordinator, device_identifier, "wifi_qr_code", "WiFi QR Code")
         self._attr_icon = "mdi:qrcode"
         self._attr_entity_registry_enabled_default = False
 
@@ -449,6 +474,11 @@ class TwibiWifiQRCodeSensor(TwibiBaseSensor):
         return qr_string
 
     @property
+    def available(self) -> bool:
+        """Return whether WiFi data is currently available."""
+        return self.coordinator.last_update_success and self.coordinator.data.wifi is not None
+
+    @property
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return additional state attributes."""
         wifi_info = self.coordinator.data.wifi
@@ -466,9 +496,14 @@ class TwibiWifiQRCodeSensor(TwibiBaseSensor):
 class TwibiGuestWifiQRCodeSensor(TwibiBaseSensor):
     """Guest WiFi QR Code sensor."""
 
-    def __init__(self, coordinator: TwibiCoordinator, host: str) -> None:
+    def __init__(self, coordinator: TwibiCoordinator, device_identifier: str) -> None:
         """Initialize the sensor."""
-        super().__init__(coordinator, host, "guest_wifi_qr_code", "Guest WiFi QR Code")
+        super().__init__(
+            coordinator,
+            device_identifier,
+            "guest_wifi_qr_code",
+            "Guest WiFi QR Code",
+        )
         self._attr_icon = "mdi:qrcode"
         self._attr_entity_registry_enabled_default = False
 
@@ -493,6 +528,11 @@ class TwibiGuestWifiQRCodeSensor(TwibiBaseSensor):
             qr_string = f"WIFI:T:nopass;S:{ssid};;"
 
         return qr_string
+
+    @property
+    def available(self) -> bool:
+        """Return whether guest WiFi data is currently available."""
+        return self.coordinator.last_update_success and self.coordinator.data.guest_info is not None
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:

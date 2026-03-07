@@ -6,6 +6,7 @@ from typing import Any
 import aiohttp
 
 from .api import APIError, TwibiConnection, TwibiController, TwibiDataFetcher
+from .api.const import DEFAULT_TIMEOUT
 from .api.enums import (
     GuestNetworkBandwidthLimit,
     GuestNetworkTimeRestriction,
@@ -20,7 +21,6 @@ from .api.models import (
     RouterData,
     WanStatistic,
 )
-from .const import DEFAULT_TIMEOUT
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -73,50 +73,18 @@ class TwibiAPI:
         """Get the controller."""
         return self._controller
 
-    # Backward compatibility methods
-    async def login_result(self) -> AuthenticationResult:
-        """Login to router and return a typed result."""
+    async def authenticate(self) -> AuthenticationResult:
+        """Authenticate with the router and return a typed result."""
         return await self._connection.authenticate()
 
-    async def login(self) -> bool:
-        """Login to router (backward compatibility)."""
-        result = await self.login_result()
-        return result.authenticated
-
-    async def get_modules(self, module_list: list[str]) -> dict[str, Any]:
-        """Retrieve module data from the router (backward compatibility)."""
+    async def get_data(self, module_list: list[str]) -> dict[str, Any]:
+        """Retrieve raw module data from the router."""
         return await self._data_fetcher.get_all_data(module_list)
 
     async def get_router_data(self, modules: list[str] | None = None) -> RouterData:
         """Retrieve a typed router snapshot."""
         return await self._data_fetcher.get_router_data(modules)
 
-    @property
-    def session(self) -> aiohttp.ClientSession:
-        """Get the HTTP session (backward compatibility)."""
-        return self._connection.session
-
-    @property
-    def base_url(self) -> str:
-        """Return base URL (backward compatibility)."""
-        return self._connection.base_url
-
-    @property
-    def get_url(self) -> str:
-        """Return get URL (backward compatibility)."""
-        return self._connection.get_url
-
-    @property
-    def set_url(self) -> str:
-        """Return set URL (backward compatibility)."""
-        return self._connection.set_url
-
-    @staticmethod
-    def get_timestamp() -> int:
-        """Get current timestamp in milliseconds (backward compatibility)."""
-        return TwibiConnection.get_timestamp()
-
-    # Enhanced methods using new architecture
     async def get_node_info(self) -> list[NodeInfo]:
         """Get node information."""
         return await self._data_fetcher.get_node_info()
