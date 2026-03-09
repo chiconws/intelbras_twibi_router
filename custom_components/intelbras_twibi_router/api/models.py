@@ -11,7 +11,9 @@ from .enums import (
     DeviceRssiDefault,
     DeviceTxRateDefault,
     FirmwareUpdateState,
+    GuestNetworkBandwidthLimit,
     GuestNetworkState,
+    GuestNetworkTimeRestriction,
     NetworkLinkState,
     NodeNetworkStatus,
     NodeRole,
@@ -338,8 +340,8 @@ class GuestInfo:
     enabled: bool
     ssid: str
     password: str
-    time_restriction: str
-    bandwidth_limit: str
+    time_restriction: GuestNetworkTimeRestriction
+    bandwidth_limit: GuestNetworkBandwidthLimit
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Self:
@@ -348,8 +350,8 @@ class GuestInfo:
             enabled=data["guest_en"] == GuestNetworkState.ENABLED,
             ssid=data["guest_ssid"],
             password=data["guest_pass"],
-            time_restriction=data["guest_time"],
-            bandwidth_limit=data["limit"],
+            time_restriction=GuestNetworkTimeRestriction(data["guest_time"]),
+            bandwidth_limit=GuestNetworkBandwidthLimit(data["limit"]),
         )
 
     def to_dict(self) -> dict[str, Any]:

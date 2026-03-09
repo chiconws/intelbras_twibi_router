@@ -5,13 +5,12 @@ from typing import Any
 
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .api.enums import GuestNetworkBandwidthLimit, GuestNetworkTimeRestriction
 from .coordinator import TwibiCoordinator
-from .const import DOMAIN
+from .helpers import build_router_device_info
 from .runtime_data import get_runtime_data
 
 _LOGGER = logging.getLogger(__name__)
@@ -24,23 +23,21 @@ async def async_setup_entry(
 ) -> None:
     """Set up Twibi Router switch entities."""
     runtime_data = get_runtime_data(hass, entry.entry_id)
-    coordinator: TwibiCoordinator = runtime_data.coordinator
+    coordinator = runtime_data.coordinator
     primary_device_identifier = runtime_data.primary_device_identifier
 
-    entities = []
-
-    # Create optional switches unconditionally so transient startup failures
-    # do not permanently suppress entities until the next reload.
-    entities.append(TwibiGuestNetworkSwitch(coordinator, primary_device_identifier))
-    entities.append(TwibiUpnpSwitch(coordinator, primary_device_identifier))
-
-    # Remote web access switch removed per user request
-
-    async_add_entities(entities)
+    async_add_entities(
+        [
+            TwibiGuestNetworkSwitch(coordinator, primary_device_identifier),
+            TwibiUpnpSwitch(coordinator, primary_device_identifier),
+        ]
+    )
 
 
-class TwibiBaseSwitch(CoordinatorEntity, SwitchEntity):
+class TwibiBaseSwitch(SwitchEntity):
     """Base class for Twibi Router switches."""
+
+    coordinator: TwibiCoordinator
 
     def __init__(
         self,
@@ -50,12 +47,31 @@ class TwibiBaseSwitch(CoordinatorEntity, SwitchEntity):
         name: str,
     ) -> None:
         """Initialize the switch."""
-        super().__init__(coordinator)
-        self._device_identifier = device_identifier
-        self._switch_type = switch_type
+        super().__init__()
+        self.coordinator = coordinator
+        self._attr_should_poll = False
+        self._attr_available = coordinator.last_update_success
+        self._attr_device_info = build_router_device_info(device_identifier)
         self._attr_name = name
         self._attr_unique_id = f"{device_identifier}_{switch_type}"
-        self._attr_device_info = {"identifiers": {(DOMAIN, device_identifier)}}
+
+    async def async_added_to_hass(self) -> None:
+        """Register coordinator listener when the entity is added."""
+        await super().async_added_to_hass()
+        self.async_on_remove(
+            self.coordinator.async_add_listener(self._handle_coordinator_update)
+        )
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        """Refresh entity state when coordinator data changes."""
+        self._update_from_coordinator()
+        self.async_write_ha_state()
+
+    @callback
+    def _update_from_coordinator(self) -> None:
+        """Refresh cached attributes from coordinator data."""
+        self._attr_available = self.coordinator.last_update_success
 
 
 class TwibiGuestNetworkSwitch(TwibiBaseSwitch):
@@ -63,40 +79,37 @@ class TwibiGuestNetworkSwitch(TwibiBaseSwitch):
 
     def __init__(self, coordinator: TwibiCoordinator, device_identifier: str) -> None:
         """Initialize the switch."""
-        super().__init__(coordinator, device_identifier, "guest_network", "Guest Network")
+        super().__init__(
+            coordinator,
+            device_identifier,
+            "guest_network",
+            "Guest Network",
+        )
         self._attr_icon = "mdi:wifi-plus"
+        self._update_from_coordinator()
 
-    @property
-    def is_on(self) -> bool:
-        """Return true if guest network is enabled."""
+    @callback
+    def _update_from_coordinator(self) -> None:
+        """Refresh guest network state from coordinator data."""
         guest_info = self.coordinator.data.guest_info
-        return bool(guest_info and guest_info.enabled)
-
-    @property
-    def available(self) -> bool:
-        """Return whether guest network data is currently available."""
-        return self.coordinator.last_update_success and self.coordinator.data.guest_info is not None
-
-    @property
-    def extra_state_attributes(self) -> dict[str, Any]:
-        """Return additional state attributes."""
-        guest_info = self.coordinator.data.guest_info
-        if guest_info is None:
-            return {}
-
-        password = guest_info.password
-        bandwidth_limit = guest_info.bandwidth_limit
-
-        return {
-            "ssid": guest_info.ssid,
-            "password_set": bool(password),
-            "time_restriction": guest_info.time_restriction,
-            "bandwidth_limit": (
-                "No limit"
-                if bandwidth_limit == GuestNetworkBandwidthLimit.UNLIMITED
-                else bandwidth_limit
-            ),
-        }
+        self._attr_available = (
+            self.coordinator.last_update_success and guest_info is not None
+        )
+        self._attr_is_on = bool(guest_info and guest_info.enabled)
+        self._attr_extra_state_attributes = (
+            {
+                "ssid": guest_info.ssid,
+                "password_set": bool(guest_info.password),
+                "time_restriction": guest_info.time_restriction,
+                "bandwidth_limit": (
+                    "No limit"
+                    if guest_info.bandwidth_limit == GuestNetworkBandwidthLimit.UNLIMITED
+                    else guest_info.bandwidth_limit
+                ),
+            }
+            if guest_info is not None
+            else {}
+        )
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn on guest network."""
@@ -137,9 +150,6 @@ class TwibiGuestNetworkSwitch(TwibiBaseSwitch):
             return
 
         await self.coordinator.async_refresh()
-        new_guest_info = self.coordinator.data.guest_info
-        new_enabled = bool(new_guest_info and new_guest_info.enabled)
-        _LOGGER.info("Guest WiFi turn ON - After refresh, enabled state: %s", new_enabled)
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn off guest network."""
@@ -180,9 +190,6 @@ class TwibiGuestNetworkSwitch(TwibiBaseSwitch):
             return
 
         await self.coordinator.async_refresh()
-        new_guest_info = self.coordinator.data.guest_info
-        new_enabled = bool(new_guest_info and new_guest_info.enabled)
-        _LOGGER.info("Guest WiFi turn OFF - After refresh, enabled state: %s", new_enabled)
 
 
 class TwibiUpnpSwitch(TwibiBaseSwitch):
@@ -192,17 +199,17 @@ class TwibiUpnpSwitch(TwibiBaseSwitch):
         """Initialize the switch."""
         super().__init__(coordinator, device_identifier, "upnp", "UPnP")
         self._attr_icon = "mdi:router-network"
+        self._update_from_coordinator()
 
-    @property
-    def is_on(self) -> bool:
-        """Return true if UPnP is enabled."""
+    @callback
+    def _update_from_coordinator(self) -> None:
+        """Refresh UPnP state from coordinator data."""
         upnp_info = self.coordinator.data.upnp_info
-        return bool(upnp_info and upnp_info.upnp_enabled)
-
-    @property
-    def available(self) -> bool:
-        """Return whether UPnP data is currently available."""
-        return self.coordinator.last_update_success and self.coordinator.data.upnp_info is not None
+        self._attr_available = (
+            self.coordinator.last_update_success and upnp_info is not None
+        )
+        self._attr_is_on = bool(upnp_info and upnp_info.upnp_enabled)
+        self._attr_extra_state_attributes = {}
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn on UPnP."""

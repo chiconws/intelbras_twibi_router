@@ -2,32 +2,35 @@
 import logging
 
 from homeassistant.components.button import ButtonEntity
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.util import slugify
 
 from .coordinator import TwibiCoordinator
-from .const import DOMAIN
+from .helpers import build_router_device_info
 from .runtime_data import get_runtime_data
 
 _LOGGER = logging.getLogger(__name__)
 
 
-async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
+async def async_setup_entry(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    async_add_entities: AddEntitiesCallback,
+) -> None:
     """Set up button for Twibi router."""
     runtime_data = get_runtime_data(hass, entry.entry_id)
-    coordinator = runtime_data.coordinator
+    coordinator: TwibiCoordinator = runtime_data.coordinator
     host = runtime_data.host
     primary_device_identifier = runtime_data.primary_device_identifier
 
-    # Only add the restart button for the primary router
-    primary_device_id = (DOMAIN, primary_device_identifier)
     entities = [
         TwibiRestartButton(
             coordinator,
             host,
             primary_device_identifier,
-            primary_device_id,
         )
     ]
 
@@ -42,7 +45,6 @@ class TwibiRestartButton(ButtonEntity):
         coordinator: TwibiCoordinator,
         host: str,
         primary_device_identifier: str,
-        device_id: tuple[str, str],
     ) -> None:
         """Initialize the restart button."""
         self.coordinator = coordinator
@@ -51,7 +53,7 @@ class TwibiRestartButton(ButtonEntity):
         self._attr_name = "Restart Router"
         self._attr_icon = "mdi:restart"
         self._attr_entity_category = EntityCategory.CONFIG
-        self._attr_device_info = {"identifiers": {device_id}}
+        self._attr_device_info = build_router_device_info(primary_device_identifier)
         self._attr_suggested_object_id = f"restart_router_{slugify(primary_device_identifier)}"
         self._attr_available = coordinator.last_update_success
 

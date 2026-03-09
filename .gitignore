@@ -27,6 +27,7 @@ ENV/
 # IDE files
 .idea/
 .vscode/
+pyrightconfig.json
 *.swp
 *.swo
 
