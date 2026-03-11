@@ -6,6 +6,7 @@ import logging
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .api import APIError, AuthenticationError, ConnectionError as TwibiConnectionError
@@ -82,9 +83,15 @@ class TwibiCoordinator(DataUpdateCoordinator[RouterData]):
                 return typed_data
 
             except AuthenticationError as err:
-                # Authentication errors might be temporary with flaky routers
                 self._consecutive_failures += 1
                 self.api.invalidate_auth()
+                if self._is_invalid_credentials_error(err):
+                    self.logger.error(
+                        "Authentication failed with invalid credentials. Starting reauth flow."
+                    )
+                    raise ConfigEntryAuthFailed("Invalid credentials") from err
+
+                # Authentication errors might be temporary with flaky routers
                 self._maybe_enable_restart_recovery()
                 max_attempts = self._current_max_attempts()
 
@@ -198,6 +205,11 @@ class TwibiCoordinator(DataUpdateCoordinator[RouterData]):
         """Track retry attempts during restart recovery."""
         if self._router_restart_detected:
             self._restart_recovery_attempts += 1
+
+    @staticmethod
+    def _is_invalid_credentials_error(err: AuthenticationError) -> bool:
+        """Return whether the auth failure indicates stored credentials are wrong."""
+        return str(err) == "Invalid credentials"
 
     async def async_refresh_with_fallback(self) -> bool:
         """Attempt to refresh data with fallback to cached data if available."""

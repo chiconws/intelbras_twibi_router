@@ -1,0 +1,57 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Configurar roteador Twibi",
+        "description": "Informe os dados de acesso do roteador Intelbras Twibi.",
+        "data": {
+          "Endereço IP do Twibi": "Endereço IP do Twibi",
+          "password": "Senha",
+          "Intervalo de atualização (em segundos)": "Intervalo de atualização (em segundos)"
+        }
+      },
+      "wifi_filter": {
+        "title": "Filtro de dispositivos",
+        "description": "{description}",
+        "data": {
+          "Apenas dispositivos conectados ao Wi-Fi": "Apenas dispositivos conectados ao Wi-Fi"
+        }
+      },
+      "select_devices": {
+        "title": "Selecionar dispositivos",
+        "description": "Foram encontrados {device_count} dispositivos. Selecione os que deseja rastrear ou deixe em branco para acompanhar todos.",
+        "data": {
+          "Dispositivos selecionados": "Dispositivos selecionados"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Atualizar senha do roteador",
+        "description": "A senha salva para o roteador Intelbras Twibi não é mais válida. Informe a nova senha para reconectar a integração.",
+        "data": {
+          "password": "Senha"
+        }
+      }
+    },
+    "abort": {
+      "reauth_successful": "Senha atualizada com sucesso."
+    }
+  },
+  "options": {
+    "step": {
+      "wifi_filter": {
+        "title": "Filtro de dispositivos",
+        "description": "{description}",
+        "data": {
+          "Apenas dispositivos conectados ao Wi-Fi": "Apenas dispositivos conectados ao Wi-Fi"
+        }
+      },
+      "device_selection": {
+        "title": "Selecionar dispositivos",
+        "description": "Foram encontrados {device_count} dispositivos. Selecione os que deseja rastrear ou deixe em branco para acompanhar todos.",
+        "data": {
+          "Dispositivos selecionados": "Dispositivos selecionados"
+        }
+      }
+    }
+  }
+}

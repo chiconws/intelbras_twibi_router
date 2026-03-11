@@ -110,41 +110,52 @@ class TwibiConfigFlow(ConfigFlow, domain=DOMAIN):
         self._devices: list[OnlineDevice] = []
         self._api = None
 
+    async def _async_authenticate_data(
+        self,
+        data: dict,
+    ) -> str | None:
+        """Validate router credentials for a data payload."""
+        session = async_get_clientsession(self.hass)
+
+        try:
+            self._api = TwibiAPI(
+                data[CONF_TWIBI_IP_ADDRESS],
+                data[CONF_PASSWORD],
+                data.get(CONF_EXCLUDE_WIRED, DEFAULT_EXCLUDE_WIRED),
+                data.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL),
+                session,
+            )
+
+            auth_result = await self._api.authenticate()
+            if not auth_result.authenticated:
+                return "Senha inválida."
+
+        except APIError as err:
+            _LOGGER.error("API Error during login: %s", err)
+            return "Endereço IP ou senha inválidos."
+        except Exception as err:
+            _LOGGER.error("Unexpected error during login: %s", err)
+            return "Erro inesperado. Verifique os logs."
+
+        return None
+
     async def async_step_user(self, user_input=None):
         """Handle the initial step."""
         errors = {}
 
         if user_input is not None:
-            host = user_input[CONF_TWIBI_IP_ADDRESS]
-            password = user_input[CONF_PASSWORD]
-            session = async_get_clientsession(self.hass)
-
-            try:
-                self._api = TwibiAPI(
-                    host,
-                    password,
-                    DEFAULT_EXCLUDE_WIRED,  # Default exclude_wired value, will be updated in the next step
-                    user_input[CONF_UPDATE_INTERVAL],
-                    session
+            errors["base"] = (
+                await self._async_authenticate_data(
+                    {
+                        **user_input,
+                        CONF_EXCLUDE_WIRED: DEFAULT_EXCLUDE_WIRED,
+                    }
                 )
-
-                # Test authentication
-                auth_result = await self._api.authenticate()
-                if not auth_result.authenticated:
-                    errors["base"] = "Endereço IP ou senha inválidos."
-                else:
-                    # Store the user input for later
-                    self._data = user_input
-
-                    # Proceed to the WiFi filter selection step
-                    return await self.async_step_wifi_filter()
-
-            except APIError as err:
-                _LOGGER.error("API Error during login: %s", err)
-                errors["base"] = "Endereço IP ou senha inválidos."
-            except Exception as err:
-                _LOGGER.error("Unexpected error during login: %s", err)
-                errors["base"] = "Erro inesperado. Verifique os logs."
+                or ""
+            )
+            if not errors["base"]:
+                self._data = user_input
+                return await self.async_step_wifi_filter()
 
         schema = vol.Schema(
             {
@@ -297,6 +308,39 @@ class TwibiConfigFlow(ConfigFlow, domain=DOMAIN):
     def async_get_options_flow(config_entry):
         """Get the options flow for this handler."""
         return TwibiOptionsFlow(config_entry)
+
+    async def async_step_reauth(self, entry_data):
+        """Start reauth when stored credentials are no longer valid."""
+        self._data = dict(entry_data)
+        return await self.async_step_reauth_confirm()
+
+    async def async_step_reauth_confirm(self, user_input=None):
+        """Handle the credential update step for reauth."""
+        errors = {}
+
+        if user_input is not None:
+            reauth_data = {
+                **self._data,
+                CONF_PASSWORD: user_input[CONF_PASSWORD],
+            }
+            errors["base"] = await self._async_authenticate_data(reauth_data) or ""
+            if not errors["base"]:
+                return self.async_update_reload_and_abort(
+                    self._get_reauth_entry(),
+                    data_updates={CONF_PASSWORD: user_input[CONF_PASSWORD]},
+                )
+
+        schema = vol.Schema(
+            {
+                vol.Required(CONF_PASSWORD): str,
+            }
+        )
+
+        return self.async_show_form(
+            step_id="reauth_confirm",
+            data_schema=schema,
+            errors=errors,
+        )
 
 
 class TwibiOptionsFlow(OptionsFlow):

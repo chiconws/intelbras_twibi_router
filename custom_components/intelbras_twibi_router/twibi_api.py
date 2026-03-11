@@ -6,7 +6,13 @@ from typing import Any
 
 import aiohttp
 
-from .api import APIError, TwibiConnection, TwibiController, TwibiDataFetcher
+from .api import (
+    APIError,
+    AuthenticationError,
+    TwibiConnection,
+    TwibiController,
+    TwibiDataFetcher,
+)
 from .api.const import DEFAULT_TIMEOUT
 from .api.enums import (
     GuestNetworkBandwidthLimit,
@@ -207,6 +213,11 @@ class TwibiAPI:
         """Perform a health check on the API connection."""
         try:
             basic_data = await self._data_fetcher.get_all_data([RouterModule.NODE_INFO])
+        except AuthenticationError as err:
+            _LOGGER.debug("Health check failed: %s", err)
+            if str(err) == "Invalid credentials":
+                raise
+            return False
         except APIError as err:
             _LOGGER.debug("Health check failed: %s", err)
             return False
