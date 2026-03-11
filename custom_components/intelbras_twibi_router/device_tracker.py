@@ -1,44 +1,54 @@
 """Device tracker for Twibi Router integration."""
 
 import logging
+from typing import Any, cast
 
-from homeassistant.components.device_tracker import ScannerEntity
-from homeassistant.const import STATE_HOME, STATE_NOT_HOME
+from homeassistant.components.device_tracker.config_entry import ScannerEntity
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import device_registry as dr, entity_registry as er
-from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
+from .api.models import OnlineDevice
+from .coordinator import TwibiCoordinator
 from .const import CONF_SELECTED_DEVICES, CONF_TRACK_ALL_DEVICES, DOMAIN
+from .runtime_data import get_runtime_data
 
 _LOGGER = logging.getLogger(__name__)
 
 
-async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
+async def async_setup_entry(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    async_add_entities: AddEntitiesCallback,
+) -> None:
     """Set up device tracker dynamically."""
-    entry_data = hass.data[DOMAIN][entry.entry_id]
-    coordinator = entry_data["coordinator"]
-
-    # Initialize known MACs in coordinator
-    if not hasattr(coordinator, "known_macs"):
-        coordinator.known_macs = set()
+    runtime_data = get_runtime_data(hass, entry.entry_id)
+    coordinator: TwibiCoordinator = runtime_data.coordinator
 
     # Add listener for coordinator updates
-    coordinator.async_add_listener(
-        lambda: async_check_new_devices(hass, entry, async_add_entities)
+    entry.async_on_unload(
+        coordinator.async_add_listener(
+            lambda: async_check_new_devices(hass, entry, async_add_entities)
+        )
     )
     # Initial entity creation
     async_check_new_devices(hass, entry, async_add_entities)
 
 
 @callback
-def async_check_new_devices(hass: HomeAssistant, entry, async_add_entities):
+def async_check_new_devices(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    async_add_entities: AddEntitiesCallback,
+) -> None:
     """Check for new devices and create entities."""
-    entry_data = hass.data[DOMAIN][entry.entry_id]
-    coordinator = entry_data["coordinator"]
-    host = entry_data["host"]
+    runtime_data = get_runtime_data(hass, entry.entry_id)
+    coordinator: TwibiCoordinator = runtime_data.coordinator
+    primary_device_identifier = runtime_data.primary_device_identifier
 
-    online_devices = coordinator.data.get("online_list", [])
-    online_by_mac = {dev["dev_mac"]: dev for dev in online_devices}
+    online_devices = coordinator.data.online_list
+    online_by_mac = {device.mac: device for device in online_devices}
     current_macs = set(online_by_mac)
     registered_macs = _get_registered_tracker_macs(hass, entry.entry_id)
     selected_devices = entry.data.get(CONF_SELECTED_DEVICES, [])
@@ -52,7 +62,11 @@ def async_check_new_devices(hass: HomeAssistant, entry, async_add_entities):
     else:
         desired_macs = set(selected_devices or [])
 
-    _LOGGER.debug("Found %d online devices: %s", len(online_devices), [f"{dev.get('dev_name', 'Unknown')} ({dev.get('dev_mac')})" for dev in online_devices])
+    _LOGGER.debug(
+        "Found %d online devices: %s",
+        len(online_devices),
+        [f"{device.display_name} ({device.mac})" for device in online_devices],
+    )
     _LOGGER.debug("Current MACs: %s", current_macs)
     _LOGGER.debug("Registered MACs: %s", registered_macs)
     _LOGGER.debug("Known MACs: %s", coordinator.known_macs)
@@ -69,20 +83,23 @@ def async_check_new_devices(hass: HomeAssistant, entry, async_add_entities):
     entities = []
     stored_names = _get_registered_tracker_names(hass, entry.entry_id)
     for mac in sorted(new_macs):
-        device_info = online_by_mac.get(
-            mac,
-            {
-                "dev_mac": mac,
-                "dev_name": stored_names.get(mac) or f"Device {mac}",
-                "dev_ip": None,
-                "wifi_mode": None,
-            },
+        device_info = online_by_mac.get(mac)
+        device_name = (
+            device_info.display_name
+            if device_info is not None
+            else stored_names.get(mac) or f"Device {mac}"
         )
 
-        _LOGGER.debug("Creating device tracker for MAC: %s, Name: %s", mac, device_info.get("dev_name", "Unknown"))
+        _LOGGER.debug("Creating device tracker for MAC: %s, Name: %s", mac, device_name)
 
         entities.append(
-            TwibiDeviceTracker(coordinator, host, mac, device_info, entry.entry_id)
+            TwibiDeviceTracker(
+                coordinator,
+                primary_device_identifier,
+                mac,
+                device_name,
+                entry.entry_id,
+            )
         )
         coordinator.known_macs.add(mac)
 
@@ -124,131 +141,110 @@ def _get_registered_tracker_names(hass: HomeAssistant, entry_id: str) -> dict[st
     return stored_names
 
 
-class TwibiDeviceTracker(CoordinatorEntity, ScannerEntity):
+class TwibiDeviceTracker(ScannerEntity):
     """Representation of a Twibi-connected device."""
+
+    coordinator: TwibiCoordinator
 
     def __init__(
         self,
-        coordinator,
-        host,
+        coordinator: TwibiCoordinator,
+        primary_device_identifier: str,
         mac: str,
-        device_info: dict,
+        device_name: str,
         entry_id: str,
     ) -> None:
         """Initialize the device tracker."""
-
-        super().__init__(coordinator)
+        super().__init__()
+        self.coordinator = coordinator
         self._mac = mac
-        self._host = host
+        self._primary_device_identifier = primary_device_identifier
         self._entry_id = entry_id
-        self._device_info = device_info
-        self._attr_entity_category = None
+        self._device_name = device_name
+        self._last_known_online_status: bool | None = None
         self._attr_should_poll = False
-        self._last_known_online_status = None  # Track last known status (None = unknown, True = online, False = offline)
+        self._attr_name = device_name
+        self._attr_mac_address = mac
+        self._update_cached_attributes()
 
-        self._attr_device_info = {
-            "identifiers": {(DOMAIN, mac)},
-            "connections": {(dr.CONNECTION_NETWORK_MAC, mac)},
-            "manufacturer": "Unknown",
-            "model": "Network Device",
-            "name": device_info["dev_name"] or f"Device {mac}",
-            "via_device": (DOMAIN, host),
-        }
+    async def async_internal_added_to_hass(self) -> None:
+        """Create the client device before ScannerEntity attaches to it."""
+        dr.async_get(self.hass).async_get_or_create(
+            config_entry_id=self._entry_id,
+            identifiers={(DOMAIN, self._mac)},
+            connections={(dr.CONNECTION_NETWORK_MAC, self._mac)},
+            manufacturer="Unknown",
+            model="Network Device",
+            name=self._device_name,
+            via_device=(DOMAIN, self._primary_device_identifier),
+        )
+        await super().async_internal_added_to_hass()
 
-    async def async_added_to_hass(self):
-        """Register device in the device registry on entity addition."""
+    async def async_added_to_hass(self) -> None:
+        """Register coordinator listener when the entity is added."""
         await super().async_added_to_hass()
-        registry = dr.async_get(self.hass)
-        registry.async_get_or_create(
-            config_entry_id=self._entry_id, **self._attr_device_info
+        self.async_on_remove(
+            self.coordinator.async_add_listener(self._handle_coordinator_update)
         )
 
     @property
-    def device_info(self) -> dict:
-        """Return device registry info for entity linking."""
-        return self._attr_device_info
-
-    @property
-    def unique_id(self) -> str:
-        """Return the unique ID of the device."""
-        return self._mac
-
-    @property
-    def name(self) -> str:
-        """Return the name of the device."""
-        return (
-            self._device_info.get("dev_name")
-            or f"Device {self.ip_address or self._mac}"
-        )
-
-    @property
-    def online_list(self) -> list:
+    def online_list(self) -> list[OnlineDevice]:
         """Return a list with the online devices."""
-        return self.coordinator.data.get("online_list", [])
+        return self.coordinator.data.online_list
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        """Update cached attributes and availability from coordinator data."""
+        self._update_cached_attributes()
+        self.async_write_ha_state()
 
     @property
     def is_connected(self) -> bool:
         """Return whether the device is currently connected."""
-        connected = self._mac in {dev.get("dev_mac") for dev in self.online_list}
-        self._last_known_online_status = connected # Update last known online status
+        connected = self.current_info is not None
+        self._last_known_online_status = connected
         return connected
 
-    @property
-    def available(self) -> bool:
-        """Return if entity is available."""
+    def _update_cached_attributes(self) -> None:
+        """Refresh cached entity attributes from coordinator state."""
+        current_info = self.current_info
+        self._attr_ip_address = current_info.ip if current_info else None
+        self._attr_hostname = (
+            current_info.display_name if current_info else self._device_name
+        )
+        self._attr_name = current_info.display_name if current_info else self._device_name
+        self._attr_extra_state_attributes = {
+            "mac": self._mac,
+            "ip": self._attr_ip_address,
+            "connection": self.connection_type,
+        }
+
         # The entity is always available if the coordinator is successfully updating
         if self.coordinator.last_update_success:
-            return True
+            self._attr_available = True
+        else:
+            # If coordinator failed to update, keep entities that were already offline
+            # available so they remain "away". Only previously online devices become
+            # unavailable when we lose contact with the router.
+            self._attr_available = not self._last_known_online_status
 
-        # If coordinator failed to update, we need to decide based on last known status:
-        # - If we never knew the status (None), assume device is offline and keep available
-        # - If device was last known to be offline (False), keep it available so it shows as "Away"
-        # - If device was last known to be online (True), make it unavailable since we lost connection
-        if self._last_known_online_status is None or self._last_known_online_status is False:
-            return True
-
-        # Device was last known to be online but coordinator failed - mark as unavailable
-        return False
-
-    @property
-    def state(self) -> str:
-        """Return the state of the device."""
-        # Explicitly return STATE_HOME or STATE_NOT_HOME based on connection status.
-        # This ensures that a disconnected device is 'offline' (STATE_NOT_HOME)
-        # even if the coordinator had a temporary hiccup, as long as the entity itself is 'available'.
-        return STATE_HOME if self.is_connected else STATE_NOT_HOME
+        cache = cast(dict[str, Any], self.__dict__)
+        for cache_key in (
+            "available",
+            "name",
+            "ip_address",
+            "hostname",
+            "extra_state_attributes",
+        ):
+            cache.pop(cache_key, None)
 
     @property
-    def current_info(self) -> dict:
+    def current_info(self) -> OnlineDevice | None:
         """Return the current device information."""
-        return next(
-            (dev for dev in self.online_list if dev.get("dev_mac") == self._mac),
-            self._device_info,
-        )
-
-    @property
-    def ip_address(self) -> str | None:
-        """Return the IP address of the device, or None if unavailable."""
-        return self.current_info.get("dev_ip")
+        return self.coordinator.data.get_device_by_mac(self._mac)
 
     @property
     def connection_type(self) -> str:
         """Return the connection type of the device."""
-        match self.current_info.get("wifi_mode"):
-            case "--":
-                return "Ethernet"
-            case "AC":
-                return "5GHz"
-            case "BGN":
-                return "2.4GHz"
-            case _:
-                return ""
-
-    @property
-    def extra_state_attributes(self) -> dict:
-        """Return additional state attributes for the device."""
-        return {
-            "mac": self._mac,
-            "ip": self.ip_address,
-            "connection": self.connection_type,
-        }
+        current_info = self.current_info
+        return current_info.connection_type if current_info else ""

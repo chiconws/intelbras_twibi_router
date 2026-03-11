@@ -1,6 +1,7 @@
 """Connection management for Twibi Router API."""
 
 import asyncio
+from collections.abc import Sequence
 from datetime import datetime
 import hashlib
 import json
@@ -9,7 +10,8 @@ from typing import Any
 
 import aiohttp
 
-from ..const import DEFAULT_TIMEOUT
+from .const import DEFAULT_TIMEOUT
+from .enums import RouterModule
 from .models import AuthenticationResult, CommandResult
 
 _LOGGER = logging.getLogger(__name__)
@@ -94,16 +96,19 @@ class TwibiConnection:
                 _LOGGER.debug("Successfully authenticated to Twibi router at %s", self.host)
                 return result
 
-        except aiohttp.ClientError as err:
+        except (asyncio.TimeoutError, aiohttp.ClientError) as err:
             self._authenticated = False
             raise ConnectionError("Failed to connect to router") from err
 
-    async def get_data(self, modules: list[str]) -> dict[str, Any]:
+    async def get_data(
+        self,
+        modules: Sequence[str | RouterModule],
+    ) -> dict[str, Any]:
         """Fetch data from specified modules."""
         await self.ensure_authenticated()
 
         try:
-            url = self.get_url + ",".join(modules)
+            url = self.get_url + ",".join(str(module) for module in modules)
             _LOGGER.debug("Fetching data from URL: %s", url)
 
             async with self.session.get(url, timeout=self.timeout) as response:
@@ -115,7 +120,7 @@ class TwibiConnection:
 
                 return self._decode_json_response(raw_data, reset_auth_on_html=True)
 
-        except aiohttp.ClientError as err:
+        except (asyncio.TimeoutError, aiohttp.ClientError) as err:
             # Reset authentication on connection errors
             self._authenticated = False
             raise ConnectionError(f"Failed to fetch data: {err}") from err
@@ -133,7 +138,7 @@ class TwibiConnection:
                 data = self._decode_json_response(raw_response, reset_auth_on_html=True)
                 return CommandResult.from_response(command, data)
 
-        except aiohttp.ClientError as err:
+        except (asyncio.TimeoutError, aiohttp.ClientError) as err:
             # Reset authentication on connection errors
             self._authenticated = False
             raise ConnectionError(f"Failed to send command: {err}") from err

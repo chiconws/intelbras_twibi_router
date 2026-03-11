@@ -4,6 +4,16 @@ import logging
 from typing import Any
 
 from .connection import APIError, TwibiConnection
+from .enums import (
+    GuestNetworkBandwidthLimit,
+    GuestNetworkState,
+    GuestNetworkTimeRestriction,
+    NodeLedState,
+    RouterModule,
+    UpnpState,
+    WifiSecurityMode,
+    WifiSecurityType,
+)
 from .models import CommandResult
 
 _LOGGER = logging.getLogger(__name__)
@@ -15,6 +25,19 @@ class TwibiController:
     def __init__(self, connection: TwibiConnection) -> None:
         """Initialize the controller."""
         self.connection = connection
+
+    def _build_payload(
+        self,
+        command: str,
+        values: dict[str, Any],
+    ) -> dict[str, dict[str, Any]]:
+        """Build a command payload with the required router timestamp."""
+        return {
+            command: {
+                **values,
+                "timestamp": str(self.connection.get_timestamp()),
+            }
+        }
 
     async def _execute_command(
         self,
@@ -40,13 +63,13 @@ class TwibiController:
 
     async def set_led_status_result(self, serial: str, enabled: bool) -> CommandResult:
         """Set LED status for a specific node and return a typed result."""
-        payload = {
-            "led": {
-                "led_en": "1" if enabled else "0",
+        payload = self._build_payload(
+            "led",
+            {
+                "led_en": NodeLedState.ON if enabled else NodeLedState.OFF,
                 "sn": serial,
-                "timestamp": str(self.connection.get_timestamp()),
-            }
-        }
+            },
+        )
 
         result = await self._execute_command(f"set LED status for {serial}", payload)
         if result.success:
@@ -60,12 +83,12 @@ class TwibiController:
 
     async def restart_router_result(self) -> CommandResult:
         """Restart the router and return a typed result."""
-        payload = {
-            "sys_reboot": {
+        payload = self._build_payload(
+            "sys_reboot",
+            {
                 "action": "reboot",
-                "timestamp": str(self.connection.get_timestamp()),
-            }
-        }
+            },
+        )
 
         result = await self._execute_command("restart router", payload)
         if result.success:
@@ -81,19 +104,19 @@ class TwibiController:
         self,
         ssid: str,
         password: str,
-        security_type: str = "aes",
-        security_mode: str = "psk psk2",
+        security_type: WifiSecurityType = WifiSecurityType.AES,
+        security_mode: WifiSecurityMode = WifiSecurityMode.PSK_PSK2,
     ) -> CommandResult:
         """Set WiFi configuration and return a typed result."""
-        payload = {
-            "wifi": {
+        payload = self._build_payload(
+            RouterModule.WIFI,
+            {
                 "ssid": ssid,
                 "pass": password,
                 "type": security_type,
                 "security": security_mode,
-                "timestamp": str(self.connection.get_timestamp()),
-            }
-        }
+            },
+        )
 
         result = await self._execute_command("set WiFi configuration", payload)
         if result.success:
@@ -104,8 +127,8 @@ class TwibiController:
         self,
         ssid: str,
         password: str,
-        security_type: str = "aes",
-        security_mode: str = "psk psk2"
+        security_type: WifiSecurityType = WifiSecurityType.AES,
+        security_mode: WifiSecurityMode = WifiSecurityMode.PSK_PSK2,
     ) -> bool:
         """Set WiFi configuration."""
         result = await self.set_wifi_config_result(
@@ -121,29 +144,33 @@ class TwibiController:
         enabled: bool,
         ssid: str | None = None,
         password: str | None = None,
-        time_restriction: str = "always",
-        bandwidth_limit: str = "0",
+        time_restriction: GuestNetworkTimeRestriction = GuestNetworkTimeRestriction.ALWAYS,
+        bandwidth_limit: GuestNetworkBandwidthLimit = GuestNetworkBandwidthLimit.UNLIMITED,
     ) -> CommandResult:
         """Configure guest network settings and return a typed result."""
-        payload = {
-            "guest_info": {
-                "guest_en": "1" if enabled else "0",
+        payload = self._build_payload(
+            RouterModule.GUEST_INFO,
+            {
+                "guest_en": (
+                    GuestNetworkState.ENABLED
+                    if enabled
+                    else GuestNetworkState.DISABLED
+                ),
                 "guest_time": time_restriction,
                 "limit": bandwidth_limit,
-                "timestamp": str(self.connection.get_timestamp()),
-            }
-        }
+            },
+        )
 
         # Always include SSID and password to match web UI format exactly
         # Use empty string if not provided, just like the web UI does
-        payload["guest_info"]["guest_ssid"] = ssid if ssid else ""
-        payload["guest_info"]["guest_pass"] = password if password else ""
+        payload[RouterModule.GUEST_INFO]["guest_ssid"] = ssid if ssid else ""
+        payload[RouterModule.GUEST_INFO]["guest_pass"] = password if password else ""
 
         _LOGGER.info(
             "Guest network API payload: %s",
             {
                 key: "***" if key == "guest_pass" else value
-                for key, value in payload["guest_info"].items()
+                for key, value in payload[RouterModule.GUEST_INFO].items()
             },
         )
 
@@ -157,8 +184,8 @@ class TwibiController:
         enabled: bool,
         ssid: str | None = None,
         password: str | None = None,
-        time_restriction: str = "always",
-        bandwidth_limit: str = "0"
+        time_restriction: GuestNetworkTimeRestriction = GuestNetworkTimeRestriction.ALWAYS,
+        bandwidth_limit: GuestNetworkBandwidthLimit = GuestNetworkBandwidthLimit.UNLIMITED,
     ) -> bool:
         """Configure guest network settings."""
         result = await self.set_guest_network_result(
@@ -172,12 +199,16 @@ class TwibiController:
 
     async def set_upnp_status_result(self, enabled: bool) -> CommandResult:
         """Enable or disable UPnP and return a typed result."""
-        payload = {
-            "upnp_info": {
-                "upnp_en": "1" if enabled else "0",
-                "timestamp": str(self.connection.get_timestamp()),
-            }
-        }
+        payload = self._build_payload(
+            RouterModule.UPNP_INFO,
+            {
+                "upnp_en": (
+                    UpnpState.ENABLED
+                    if enabled
+                    else UpnpState.DISABLED
+                ),
+            },
+        )
 
         result = await self._execute_command("set UPnP status", payload)
         if result.success:
