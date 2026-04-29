@@ -46,7 +46,7 @@ class TwibiCoordinator(DataUpdateCoordinator[RouterData]):
         self._last_successful_update = None
         self._router_restart_detected = False
         self._restart_recovery_attempts = 0
-        self._max_restart_recovery_attempts = 10  # Allow more attempts during restart recovery
+        self._max_restart_recovery_attempts = 10
 
     async def _async_update_data(self) -> RouterData:
         """Update data from the router with improved retry logic and error handling."""
@@ -56,7 +56,6 @@ class TwibiCoordinator(DataUpdateCoordinator[RouterData]):
                 break
 
             try:
-                # Perform health check first if we've had recent failures
                 if self._consecutive_failures > 0:
                     health_ok = await self.api.health_check()
                     if not health_ok:
@@ -64,17 +63,14 @@ class TwibiCoordinator(DataUpdateCoordinator[RouterData]):
 
                 typed_data = await self.api.get_router_snapshot()
 
-                # Check for router restart detection
                 if self._detect_router_restart(typed_data):
                     _LOGGER.info("Router restart detected - entering recovery mode")
                     self._router_restart_detected = True
                     self._restart_recovery_attempts = 0
 
-                # Reset failure counters on success
                 self._consecutive_failures = 0
                 self._last_successful_update = self.hass.loop.time()
 
-                # Reset restart detection if we've been successful for a while
                 if self._router_restart_detected and self._restart_recovery_attempts > 3:
                     _LOGGER.info("Router restart recovery completed")
                     self._router_restart_detected = False
@@ -91,12 +87,10 @@ class TwibiCoordinator(DataUpdateCoordinator[RouterData]):
                     )
                     raise ConfigEntryAuthFailed("Invalid credentials") from err
 
-                # Authentication errors might be temporary with flaky routers
                 self._maybe_enable_restart_recovery()
                 max_attempts = self._current_max_attempts()
 
                 if attempt < max_attempts - 1:
-                    # For flaky routers, try to re-authenticate
                     delay = self._get_retry_delay(attempt)
                     self._record_retry_attempt()
                     self.logger.warning(
@@ -120,7 +114,6 @@ class TwibiCoordinator(DataUpdateCoordinator[RouterData]):
             except (TwibiConnectionError, APIError) as err:
                 self._consecutive_failures += 1
 
-                # Check if this might be a router restart (daily 03:30 restart)
                 self._maybe_enable_restart_recovery()
                 max_attempts = self._current_max_attempts()
 
@@ -140,14 +133,12 @@ class TwibiCoordinator(DataUpdateCoordinator[RouterData]):
                     await asyncio.sleep(delay)
                     continue
                 else:
-                    # Final attempt failed
                     if self._router_restart_detected:
                         self.logger.error(
                             "Update failed after %d restart recovery attempts: %s. Router may still be restarting.",
                             max_attempts,
                             err
                         )
-                        # Don't reset restart detection immediately - let it persist for next update cycle
                     else:
                         self.logger.error(
                             "Update failed after %d attempts: %s",
@@ -157,7 +148,6 @@ class TwibiCoordinator(DataUpdateCoordinator[RouterData]):
                     raise UpdateFailed(f"Update failed after {max_attempts} attempts: {err}") from err
 
             except Exception as err:
-                # Unexpected errors
                 self._consecutive_failures += 1
                 self._maybe_enable_restart_recovery()
                 max_attempts = self._current_max_attempts()
@@ -171,7 +161,6 @@ class TwibiCoordinator(DataUpdateCoordinator[RouterData]):
                 else:
                     raise UpdateFailed(f"Unexpected error after {max_attempts} attempts: {err}") from err
 
-        # This should never be reached, but just in case
         raise UpdateFailed("Maximum retries exceeded")
 
     def _current_max_attempts(self) -> int:
@@ -196,7 +185,6 @@ class TwibiCoordinator(DataUpdateCoordinator[RouterData]):
     def _get_retry_delay(self, attempt: int) -> int:
         """Return the retry delay for the current mode."""
         if self._router_restart_detected:
-            # During restart recovery, use longer delays to give router time to boot.
             return min(30, self.base_retry_delay * (2 ** min(attempt, 4)))
 
         return self.base_retry_delay * (2 ** attempt)
@@ -216,11 +204,10 @@ class TwibiCoordinator(DataUpdateCoordinator[RouterData]):
         try:
             await self.async_refresh()
         except UpdateFailed:
-            # If we have recent cached data, continue using it
             if (
                 self.data is not None
                 and self._last_successful_update is not None
-                and (self.hass.loop.time() - self._last_successful_update) < 300  # 5 minutes
+                and (self.hass.loop.time() - self._last_successful_update) < 300
             ):
                 _LOGGER.warning("Using cached data due to update failure")
                 return True
@@ -247,7 +234,7 @@ class TwibiCoordinator(DataUpdateCoordinator[RouterData]):
         return (
             self.data is not None
             and self._last_successful_update is not None
-            and (self.hass.loop.time() - self._last_successful_update) < 600  # 10 minutes
+            and (self.hass.loop.time() - self._last_successful_update) < 600
         )
 
     async def async_set_led_status(self, serial: str, enabled: bool) -> bool:
@@ -255,8 +242,7 @@ class TwibiCoordinator(DataUpdateCoordinator[RouterData]):
         try:
             success = await self.api.set_led_status(serial, enabled)
             if success:
-                # Refresh data after successful command
-                await asyncio.sleep(1)  # Brief delay for router to process
+                await asyncio.sleep(1)
                 await self.async_refresh()
         except Exception as err:
             _LOGGER.error("Failed to set LED status: %s", err)
@@ -269,7 +255,6 @@ class TwibiCoordinator(DataUpdateCoordinator[RouterData]):
         try:
             success = await self.api.restart_router()
             if success:
-                # Don't refresh immediately after restart as router will be rebooting
                 _LOGGER.info("Router restart command sent successfully")
         except Exception as err:
             _LOGGER.error("Failed to restart router: %s", err)
@@ -318,7 +303,6 @@ class TwibiCoordinator(DataUpdateCoordinator[RouterData]):
         if not self.data or not new_data:
             return False
 
-        # Compare uptime values for primary router
         old_nodes = {node.serial: node for node in self.data.node_info}
         new_nodes = {node.serial: node for node in new_data.node_info}
 
@@ -329,7 +313,6 @@ class TwibiCoordinator(DataUpdateCoordinator[RouterData]):
                 if old_uptime is None or new_uptime is None:
                     continue
 
-                # If new uptime is significantly less than old uptime, router restarted
                 if old_uptime > 0 and new_uptime < old_uptime and (old_uptime - new_uptime) > 60:
                     return True
 

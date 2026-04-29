@@ -85,7 +85,8 @@ LAN_INFO_SCHEMA = vol.Schema(
         vol.Required("lease_time"): str,
         vol.Required("dns1"): str,
         vol.Required("dns2"): str,
-    }
+    },
+    extra=vol.ALLOW_EXTRA,
 )
 
 WAN_INFO_SCHEMA = vol.Schema(
@@ -166,5 +167,5 @@ MAIN_SCHEMA = vol.Schema(
         vol.Optional("tr069_info"): vol.Any(dict, type(None)),
         vol.Optional("mac_clone"): vol.Any(list, type(None)),
     },
-    extra=vol.ALLOW_EXTRA,  # Allow any additional fields from the API
+    extra=vol.ALLOW_EXTRA,
 )

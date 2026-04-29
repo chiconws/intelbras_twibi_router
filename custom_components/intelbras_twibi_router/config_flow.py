@@ -174,15 +174,12 @@ class TwibiConfigFlow(ConfigFlow, domain=DOMAIN):
         errors = {}
 
         if user_input is not None:
-            # Store the exclude_wired setting
             exclude_wired = user_input.get(CONF_EXCLUDE_WIRED, DEFAULT_EXCLUDE_WIRED)
             self._data[CONF_EXCLUDE_WIRED] = exclude_wired
 
-            # Update the API with the new exclude_wired value
             if self._api:
                 self._api.exclude_wired = exclude_wired
 
-            # Proceed directly to device selection
             return await self.async_step_select_devices()
 
         schema = vol.Schema({
@@ -206,7 +203,6 @@ class TwibiConfigFlow(ConfigFlow, domain=DOMAIN):
         errors = {}
 
         if not self._devices:
-            # Fetch the list of devices from the router with retry logic
             max_retries = 3
             retry_delay = 10
             errors["base"] = ""
@@ -230,7 +226,7 @@ class TwibiConfigFlow(ConfigFlow, domain=DOMAIN):
                             errors=errors,
                         )
 
-                    break  # Success, exit retry loop
+                    break
                 except AuthenticationError as ex:
                     _LOGGER.warning(
                         "Authentication error fetching devices (attempt %d/%d): %s Retrying",
@@ -267,30 +263,25 @@ class TwibiConfigFlow(ConfigFlow, domain=DOMAIN):
                         )
 
         if user_input is not None:
-            # Store the selected devices
             selected_macs = user_input.get(CONF_SELECTED_DEVICES, [])
 
-            # Combine the initial data with the selected devices
             self._data[CONF_SELECTED_DEVICES] = selected_macs
             self._data[CONF_TRACK_ALL_DEVICES] = not selected_macs
 
-            # Create the config entry
             return self.async_create_entry(
                 title=f"Twibi ({self._data[CONF_TWIBI_IP_ADDRESS]})",
                 data=self._data
             )
 
-        # Create a mapping of MAC addresses to display names
         mac_to_name = {
             dev.mac: _device_option_label(dev)
             for dev in self._devices
         }
 
-        # Create the schema for the form
         schema = vol.Schema({
             vol.Optional(
                 CONF_SELECTED_DEVICES,
-                default=[]  # Unchecked by default
+                default=[]
             ): _device_select_selector(mac_to_name),
         })
 
@@ -362,11 +353,9 @@ class TwibiOptionsFlow(OptionsFlow):
         errors = {}
 
         if user_input is not None:
-            # Store the exclude_wired setting temporarily
             exclude_wired = user_input.get(CONF_EXCLUDE_WIRED, DEFAULT_EXCLUDE_WIRED)
             self._temp_data = {CONF_EXCLUDE_WIRED: exclude_wired}
 
-            # Proceed directly to device selection
             return await self.async_step_device_selection()
 
         schema = vol.Schema({
@@ -390,7 +379,6 @@ class TwibiOptionsFlow(OptionsFlow):
         errors = {}
 
         if not self._devices:
-            # Create API instance
             session = async_get_clientsession(self.hass)
             exclude_wired = self._temp_data.get(CONF_EXCLUDE_WIRED, self._config_data.get(CONF_EXCLUDE_WIRED, DEFAULT_EXCLUDE_WIRED))
             self._api = TwibiAPI(
@@ -401,7 +389,6 @@ class TwibiOptionsFlow(OptionsFlow):
                 session
             )
 
-            # Fetch the list of devices from the router with retry logic
             max_retries = 3
             retry_delay = 10
             errors["base"] = ""
@@ -425,7 +412,7 @@ class TwibiOptionsFlow(OptionsFlow):
                             errors=errors,
                         )
 
-                    break  # Success, exit retry loop
+                    break
                 except Exception as ex:
                     _LOGGER.warning(
                         "Error fetching devices (attempt %d/%d): %s. Retrying",
@@ -445,7 +432,6 @@ class TwibiOptionsFlow(OptionsFlow):
                         )
 
         if user_input is not None:
-            # Store the selected devices
             selected_macs = user_input.get(CONF_SELECTED_DEVICES, [])
             selected_mac_set = set(selected_macs)
             current_selected = self._config_data.get(CONF_SELECTED_DEVICES, [])
@@ -460,7 +446,6 @@ class TwibiOptionsFlow(OptionsFlow):
                 and selected_mac_set == available_option_macs
             )
 
-            # Update the config entry with both exclude_wired and selected devices
             new_data = dict(self._config_data)
             new_data[CONF_SELECTED_DEVICES] = selected_macs
             new_data[CONF_TRACK_ALL_DEVICES] = track_all_devices
@@ -479,21 +464,17 @@ class TwibiOptionsFlow(OptionsFlow):
 
             return self.async_create_entry(title="", data={})
 
-        # Get currently selected devices
         current_selected = self._config_data.get(CONF_SELECTED_DEVICES, [])
         track_all_devices = self._config_data.get(
             CONF_TRACK_ALL_DEVICES,
             not current_selected,
         )
 
-        # Create a mapping of MAC addresses to display names
         mac_to_name = {
             dev.mac: _device_option_label(dev)
             for dev in self._devices
         }
 
-        # Keep previously selected devices as valid options even when they are
-        # currently offline or filtered out, so the user can uncheck them.
         for mac in current_selected:
             mac_to_name.setdefault(
                 mac,
@@ -507,7 +488,6 @@ class TwibiOptionsFlow(OptionsFlow):
                 ),
             )
 
-        # Create the schema for the form
         available_option_macs = list(mac_to_name)
         default_selected = (
             available_option_macs

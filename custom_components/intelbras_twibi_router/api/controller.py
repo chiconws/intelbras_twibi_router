@@ -161,8 +161,6 @@ class TwibiController:
             },
         )
 
-        # Always include SSID and password to match web UI format exactly
-        # Use empty string if not provided, just like the web UI does
         payload[RouterModule.GUEST_INFO]["guest_ssid"] = ssid if ssid else ""
         payload[RouterModule.GUEST_INFO]["guest_pass"] = password if password else ""
 

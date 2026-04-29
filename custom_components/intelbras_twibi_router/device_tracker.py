@@ -1,5 +1,6 @@
 """Device tracker for Twibi Router integration."""
 
+import asyncio
 import logging
 from typing import Any, cast
 
@@ -25,14 +26,13 @@ async def async_setup_entry(
     """Set up device tracker dynamically."""
     runtime_data = get_runtime_data(hass, entry.entry_id)
     coordinator: TwibiCoordinator = runtime_data.coordinator
+    _reenable_integration_disabled_trackers(hass, entry.entry_id)
 
-    # Add listener for coordinator updates
     entry.async_on_unload(
         coordinator.async_add_listener(
             lambda: async_check_new_devices(hass, entry, async_add_entities)
         )
     )
-    # Initial entity creation
     async_check_new_devices(hass, entry, async_add_entities)
 
 
@@ -71,7 +71,6 @@ def async_check_new_devices(
     _LOGGER.debug("Registered MACs: %s", registered_macs)
     _LOGGER.debug("Known MACs: %s", coordinator.known_macs)
 
-    # Find new MACs that should exist as entities, even when currently offline.
     new_macs = desired_macs - coordinator.known_macs
     _LOGGER.debug("New MACs to process: %s", new_macs)
 
@@ -79,7 +78,6 @@ def async_check_new_devices(
         _LOGGER.debug("No new devices to add")
         return
 
-    # Create entities for new devices
     entities = []
     stored_names = _get_registered_tracker_names(hass, entry.entry_id)
     for mac in sorted(new_macs):
@@ -105,6 +103,9 @@ def async_check_new_devices(
 
     if entities:
         async_add_entities(entities)
+        hass.async_create_task(
+            _async_reenable_tracker_entities(hass, entry.entry_id, new_macs)
+        )
 
 
 @callback
@@ -141,6 +142,59 @@ def _get_registered_tracker_names(hass: HomeAssistant, entry_id: str) -> dict[st
     return stored_names
 
 
+@callback
+def _reenable_integration_disabled_trackers(hass: HomeAssistant, entry_id: str) -> None:
+    """Re-enable tracker entities that older versions created as integration-disabled."""
+    registry = er.async_get(hass)
+
+    for entity_entry in er.async_entries_for_config_entry(registry, entry_id):
+        if (
+            entity_entry.platform == DOMAIN
+            and entity_entry.domain == "device_tracker"
+            and entity_entry.disabled_by == er.RegistryEntryDisabler.INTEGRATION
+        ):
+            _LOGGER.debug("Re-enabling device tracker %s", entity_entry.entity_id)
+            registry.async_update_entity(entity_entry.entity_id, disabled_by=None)
+
+
+async def _async_reenable_tracker_entities(
+    hass: HomeAssistant,
+    entry_id: str,
+    macs: set[str],
+) -> None:
+    """Re-enable freshly-created tracker entities if Home Assistant disabled them."""
+    registry = er.async_get(hass)
+    pending = set(macs)
+
+    for _ in range(40):
+        still_pending = set(pending)
+
+        for entity_entry in er.async_entries_for_config_entry(registry, entry_id):
+            if (
+                entity_entry.platform == DOMAIN
+                and entity_entry.domain == "device_tracker"
+                and entity_entry.unique_id in pending
+            ):
+                still_pending.discard(entity_entry.unique_id)
+                if entity_entry.disabled_by == er.RegistryEntryDisabler.INTEGRATION:
+                    _LOGGER.debug(
+                        "Re-enabling newly-added device tracker %s",
+                        entity_entry.entity_id,
+                    )
+                    registry.async_update_entity(entity_entry.entity_id, disabled_by=None)
+
+        pending = still_pending
+        if not pending:
+            return
+
+        await asyncio.sleep(0.25)
+
+    _LOGGER.debug(
+        "Timed out waiting for new device tracker entities to appear in the registry: %s",
+        sorted(pending),
+    )
+
+
 class TwibiDeviceTracker(ScannerEntity):
     """Representation of a Twibi-connected device."""
 
@@ -166,6 +220,11 @@ class TwibiDeviceTracker(ScannerEntity):
         self._attr_name = device_name
         self._attr_mac_address = mac
         self._update_cached_attributes()
+
+    @property
+    def entity_registry_enabled_default(self) -> bool:
+        """Keep Twibi trackers enabled when Home Assistant first registers them."""
+        return True
 
     async def async_internal_added_to_hass(self) -> None:
         """Create the client device before ScannerEntity attaches to it."""
@@ -219,13 +278,9 @@ class TwibiDeviceTracker(ScannerEntity):
             "connection": self.connection_type,
         }
 
-        # The entity is always available if the coordinator is successfully updating
         if self.coordinator.last_update_success:
             self._attr_available = True
         else:
-            # If coordinator failed to update, keep entities that were already offline
-            # available so they remain "away". Only previously online devices become
-            # unavailable when we lose contact with the router.
             self._attr_available = not self._last_known_online_status
 
         cache = cast(dict[str, Any], self.__dict__)

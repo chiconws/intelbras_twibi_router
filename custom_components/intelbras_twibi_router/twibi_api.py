@@ -50,7 +50,6 @@ class TwibiAPI:
         self._exclude_wired = exclude_wired
         self.update_interval = update_interval
 
-        # Initialize the new API components
         self._connection = TwibiConnection(host, password, session, timeout)
         self._data_fetcher = TwibiDataFetcher(self._connection, self._exclude_wired)
         self._controller = TwibiController(self._connection)
