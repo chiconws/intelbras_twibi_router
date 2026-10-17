@@ -1,90 +1,46 @@
-"""Light for Twibi LED control."""
+"""Light: the status LED of each node."""
+
+from __future__ import annotations
 
 from typing import Any
 
-from homeassistant.components.light import LightEntity
-from homeassistant.components.light.const import ColorMode
-from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant, callback
+from homeassistant.components.light import ColorMode, LightEntity
+from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .api.enums import NodeLedState
-from .coordinator import TwibiCoordinator
-from .helpers import build_router_device_info, get_node_device_identifier
-from .runtime_data import get_runtime_data
+from .coordinator import TwibiConfigEntry
+from .entity import TwibiEntity
+
+PARALLEL_UPDATES = 1
 
 
 async def async_setup_entry(
-    hass: HomeAssistant,
-    entry: ConfigEntry,
-    async_add_entities: AddEntitiesCallback,
+    hass: HomeAssistant, entry: TwibiConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
-    """Set up LED control switch for Twibi nodes."""
-    runtime_data = get_runtime_data(hass, entry.entry_id)
-    coordinator: TwibiCoordinator = runtime_data.coordinator
-    primary_device_identifier = runtime_data.primary_device_identifier
-
-    entities = []
-    for node in coordinator.data.node_info:
-        entities.append(
-            TwibiLedLight(
-                coordinator,
-                get_node_device_identifier(node, primary_device_identifier),
-                node.serial,
-            )
-        )
-
-    async_add_entities(entities)
+    """Create one LED light per node."""
+    coordinator = entry.runtime_data
+    async_add_entities(TwibiLed(coordinator, n.serial, "led") for n in coordinator.data.nodes)
 
 
-class TwibiLedLight(LightEntity):
-    """Representation of a Twibi LED light."""
+class TwibiLed(TwibiEntity, LightEntity):
+    """Status LED on the front of a node."""
 
-    coordinator: TwibiCoordinator
+    _attr_color_mode = ColorMode.ONOFF
+    _attr_supported_color_modes = {ColorMode.ONOFF}
 
-    def __init__(
-        self,
-        coordinator: TwibiCoordinator,
-        device_identifier: str,
-        serial: str,
-    ) -> None:
-        """Initialize the Twibi LED light."""
-        super().__init__()
-        self.coordinator = coordinator
-        self._device_identifier = device_identifier
-        self._serial = serial
-        self._attr_should_poll = False
-        self._attr_unique_id = f"led_{serial}"
-        self._attr_name = "Status LED"
-        self._attr_icon = "mdi:led-on"
-        self._attr_supported_color_modes = {ColorMode.ONOFF}
-        self._attr_color_mode = ColorMode.ONOFF
-        self._attr_device_info = build_router_device_info(device_identifier)
-        self._update_state()
-
-    async def async_added_to_hass(self) -> None:
-        """Register coordinator listener when the entity is added."""
-        await super().async_added_to_hass()
-        self.async_on_remove(
-            self.coordinator.async_add_listener(self._handle_coordinator_update)
-        )
-
-    @callback
-    def _handle_coordinator_update(self) -> None:
-        """Refresh light state from coordinator data."""
-        self._update_state()
-        self.async_write_ha_state()
-
-    def _update_state(self) -> None:
-        """Update cached state from the coordinator."""
-        node = self.coordinator.get_node_by_serial(self._serial)
-        self._attr_is_on = node is not None and node.led is NodeLedState.ON
-        self._attr_available = self.coordinator.last_update_success and node is not None
+    @property
+    def is_on(self) -> bool | None:
+        """Return the LED state."""
+        node = self.node
+        return node.led_on if node else None
 
     async def async_turn_on(self, **kwargs: Any) -> None:
-        """Turn on the LED for the Twibi node."""
-        await self.coordinator.async_set_led_status(self._serial, True)
+        """Turn the LED on."""
+        await self._set(True)
 
     async def async_turn_off(self, **kwargs: Any) -> None:
-        """Turn off the LED for the Twibi node."""
-        await self.coordinator.async_set_led_status(self._serial, False)
+        """Turn the LED off."""
+        await self._set(False)
+
+    async def _set(self, on: bool) -> None:
+        await self._async_command(self.coordinator.client.async_set_led(self._serial, on))

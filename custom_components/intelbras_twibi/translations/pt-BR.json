@@ -2,56 +2,109 @@
   "config": {
     "step": {
       "user": {
-        "title": "Configurar roteador Twibi",
-        "description": "Informe os dados de acesso do roteador Intelbras Twibi.",
+        "description": "Conecte-se ao Twibi principal, o que está ligado ao seu modem.",
         "data": {
-          "Endereço IP do Twibi": "Endereço IP do Twibi",
-          "password": "Senha",
-          "Intervalo de atualização (em segundos)": "Intervalo de atualização (em segundos)"
-        }
-      },
-      "wifi_filter": {
-        "title": "Filtro de dispositivos",
-        "description": "{description}",
-        "data": {
-          "Apenas dispositivos conectados ao Wi-Fi": "Apenas dispositivos conectados ao Wi-Fi"
-        }
-      },
-      "select_devices": {
-        "title": "Selecionar dispositivos",
-        "description": "Foram encontrados {device_count} dispositivos. Selecione os que deseja rastrear ou deixe em branco para acompanhar todos.",
-        "data": {
-          "Dispositivos selecionados": "Dispositivos selecionados"
+          "host": "Endereço",
+          "password": "Senha"
+        },
+        "data_description": {
+          "host": "Endereço IP do Twibi principal. O padrão do Twibi é 192.168.5.1.",
+          "password": "A senha que você usa no app ou na página do Twibi."
         }
       },
       "reauth_confirm": {
-        "title": "Atualizar senha do roteador",
-        "description": "A senha salva para o roteador Intelbras Twibi não é mais válida. Informe a nova senha para reconectar a integração.",
+        "description": "O Twibi recusou a senha salva. Informe a senha atual.",
         "data": {
+          "password": "Senha"
+        }
+      },
+      "reconfigure": {
+        "data": {
+          "host": "Endereço",
           "password": "Senha"
         }
       }
     },
+    "error": {
+      "cannot_connect": "Não foi possível conectar",
+      "invalid_auth": "Senha inválida",
+      "unknown": "Erro inesperado"
+    },
     "abort": {
-      "reauth_successful": "Senha atualizada com sucesso."
+      "already_configured": "Este Twibi já está configurado",
+      "reauth_successful": "Senha atualizada",
+      "reconfigure_successful": "Configuração atualizada",
+      "wrong_router": "Este endereço pertence a outra rede Twibi."
     }
   },
   "options": {
     "step": {
-      "wifi_filter": {
-        "title": "Filtro de dispositivos",
-        "description": "{description}",
+      "init": {
         "data": {
-          "Apenas dispositivos conectados ao Wi-Fi": "Apenas dispositivos conectados ao Wi-Fi"
-        }
-      },
-      "device_selection": {
-        "title": "Selecionar dispositivos",
-        "description": "Foram encontrados {device_count} dispositivos. Selecione os que deseja rastrear ou deixe em branco para acompanhar todos.",
-        "data": {
-          "Dispositivos selecionados": "Dispositivos selecionados"
+          "wifi_only": "Rastrear apenas clientes Wi-Fi",
+          "tracked_devices": "Dispositivos rastreados"
+        },
+        "data_description": {
+          "wifi_only": "Ignora dispositivos ligados por cabo ao rastrear todos os clientes.",
+          "tracked_devices": "Deixe vazio para rastrear todos os clientes que a rede vê."
         }
       }
+    }
+  },
+  "entity": {
+    "binary_sensor": {
+      "wan": {
+        "name": "Internet"
+      }
+    },
+    "button": {
+      "reboot": {
+        "name": "Reiniciar rede mesh"
+      }
+    },
+    "light": {
+      "led": {
+        "name": "LED de status"
+      }
+    },
+    "sensor": {
+      "wan_download": {
+        "name": "Velocidade de download"
+      },
+      "wan_upload": {
+        "name": "Velocidade de upload"
+      },
+      "connected_clients": {
+        "name": "Clientes conectados"
+      },
+      "wan_ip": {
+        "name": "Endereço IP da WAN"
+      },
+      "last_boot": {
+        "name": "Última inicialização"
+      },
+      "link_quality": {
+        "name": "Qualidade do link mesh"
+      }
+    },
+    "switch": {
+      "guest_wifi": {
+        "name": "Wi-Fi de visitantes"
+      },
+      "upnp": {
+        "name": "UPnP"
+      }
+    }
+  },
+  "exceptions": {
+    "invalid_auth": {
+      "message": "O Twibi recusou a senha."
+    },
+    "update_failed": {
+      "message": "Não foi possível ler o Twibi: {error}"
+    },
+    "command_failed": {
+      "message": "O Twibi não aceitou o comando: {error}"
     }
   }
 }
