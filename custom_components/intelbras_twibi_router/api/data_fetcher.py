@@ -6,13 +6,13 @@ from collections.abc import Sequence
 from typing import Any
 
 from ..const import MAIN_SCHEMA
+from .connection import TwibiConnection
 from .const import (
     AVAILABLE_ROUTER_MODULES,
     DEFAULT_ROUTER_DATA_MODULES,
     OPTIONAL_MODULE_REQUEST_DELAY_SECONDS,
     OPTIONAL_ROUTER_DATA_MODULES,
 )
-from .connection import TwibiConnection
 from .enums import NodeRole, RouterModule
 from .models import (
     GuestInfo,

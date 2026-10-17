@@ -1,7 +1,7 @@
 """Sensor platform for Twibi Router integration."""
 
-from datetime import datetime, timedelta
 import logging
+from datetime import datetime, timedelta
 from typing import Any
 
 from homeassistant.components.sensor import (

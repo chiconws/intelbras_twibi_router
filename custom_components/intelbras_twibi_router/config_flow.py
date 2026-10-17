@@ -5,15 +5,15 @@ import asyncio
 import logging
 
 import voluptuous as vol
-
 from homeassistant.config_entries import ConfigEntry, ConfigFlow, OptionsFlow
 from homeassistant.core import callback
-from homeassistant.helpers import device_registry as dr, entity_registry as er, selector
+from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers import selector
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import APIError, AuthenticationError
 from .api.models import OnlineDevice
-from .twibi_api import TwibiAPI
 from .const import (
     CONF_EXCLUDE_WIRED,
     CONF_PASSWORD,
@@ -26,6 +26,7 @@ from .const import (
     DEFAULT_UPDATE_INTERVAL,
     DOMAIN,
 )
+from .twibi_api import TwibiAPI
 
 _LOGGER = logging.getLogger(__name__)
 

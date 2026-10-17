@@ -1,15 +1,16 @@
 """Improved coordinator for the Intelbras Twibi router integration."""
 
 import asyncio
-from datetime import timedelta
 import logging
+from datetime import timedelta
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from .api import APIError, AuthenticationError, ConnectionError as TwibiConnectionError
+from .api import APIError, AuthenticationError
+from .api import ConnectionError as TwibiConnectionError
 from .api.models import NodeInfo, OnlineDevice, RouterData, WanStatistic
 from .twibi_api import TwibiAPI
 

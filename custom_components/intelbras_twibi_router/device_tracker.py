@@ -7,12 +7,13 @@ from typing import Any, cast
 from homeassistant.components.device_tracker.config_entry import ScannerEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers import device_registry as dr, entity_registry as er
+from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .api.models import OnlineDevice
-from .coordinator import TwibiCoordinator
 from .const import CONF_SELECTED_DEVICES, CONF_TRACK_ALL_DEVICES, DOMAIN
+from .coordinator import TwibiCoordinator
 from .runtime_data import get_runtime_data
 
 _LOGGER = logging.getLogger(__name__)
