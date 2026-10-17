@@ -85,6 +85,21 @@ async def test_chosen_trackers_are_enabled(hass: HomeAssistant, entry, client) -
     assert tracker and tracker.attributes["connection"] == "wired"
 
 
+async def test_choosing_devices_enables_them_and_drops_others(hass: HomeAssistant, loaded) -> None:
+    registry = er.async_get(hass)
+    phone = registry.async_get_entity_id("device_tracker", "intelbras_twibi", "11:22:33:44:55:01")
+    wired = registry.async_get_entity_id("device_tracker", "intelbras_twibi", "11:22:33:44:55:02")
+    assert phone and wired
+
+    hass.config_entries.async_update_entry(loaded, options={CONF_TRACKED_DEVICES: ["11:22:33:44:55:01"]})
+    await hass.async_block_till_done()  # update listener reloads the entry
+
+    tracker = registry.async_get(phone)
+    assert tracker and tracker.disabled_by is None
+    assert registry.async_get(wired) is None
+    assert state(hass, phone) == STATE_HOME
+
+
 async def test_wifi_only_skips_wired(hass: HomeAssistant, entry, client) -> None:
     hass.config_entries.async_update_entry(entry, options={CONF_WIFI_ONLY: True})
     await hass.config_entries.async_setup(entry.entry_id)

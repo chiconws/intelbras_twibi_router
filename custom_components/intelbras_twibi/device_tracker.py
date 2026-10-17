@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from homeassistant.components.device_tracker.entity import ScannerEntity
+from homeassistant.components.device_tracker import ScannerEntity
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -23,6 +23,8 @@ async def async_setup_entry(
     selected: list[str] = entry.options.get(CONF_TRACKED_DEVICES, [])
     wifi_only: bool = entry.options.get(CONF_WIFI_ONLY, False)
     known: set[str] = set()
+    if selected:
+        _apply_selection(hass, entry, set(selected))
 
     @callback
     def add_new() -> None:
@@ -47,6 +49,19 @@ async def async_setup_entry(
 
     add_new()
     entry.async_on_unload(coordinator.async_add_listener(add_new))
+
+
+@callback
+def _apply_selection(hass: HomeAssistant, entry: TwibiConfigEntry, selected: set[str]) -> None:
+    """Enable the chosen trackers and remove the rest (they were created before the choice)."""
+    registry = er.async_get(hass)
+    for reg in er.async_entries_for_config_entry(registry, entry.entry_id):
+        if reg.domain != "device_tracker":
+            continue
+        if reg.unique_id not in selected:
+            registry.async_remove(reg.entity_id)
+        elif reg.disabled_by is er.RegistryEntryDisabler.INTEGRATION:
+            registry.async_update_entity(reg.entity_id, disabled_by=None)
 
 
 class TwibiTracker(CoordinatorEntity[TwibiCoordinator], ScannerEntity):
