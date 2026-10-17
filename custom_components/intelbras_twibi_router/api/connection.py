@@ -1,11 +1,11 @@
 """Connection management for Twibi Router API."""
 
 import asyncio
-from collections.abc import Sequence
-from datetime import datetime
 import hashlib
 import json
 import logging
+from collections.abc import Sequence
+from datetime import datetime
 from typing import Any
 
 import aiohttp
@@ -101,7 +101,7 @@ class TwibiConnection:
                 _LOGGER.debug("Successfully authenticated to Twibi router at %s", self.host)
                 return result
 
-        except (asyncio.TimeoutError, aiohttp.ClientError) as err:
+        except (TimeoutError, aiohttp.ClientError) as err:
             self.invalidate_auth()
             raise ConnectionError("Failed to connect to router") from err
 
@@ -117,7 +117,7 @@ class TwibiConnection:
             _LOGGER.debug("Fetching data from URL: %s", url)
             return await self._request_json("GET", url)
 
-        except (asyncio.TimeoutError, aiohttp.ClientError) as err:
+        except (TimeoutError, aiohttp.ClientError) as err:
             self.invalidate_auth()
             raise ConnectionError(f"Failed to fetch data: {err}") from err
 
@@ -134,7 +134,7 @@ class TwibiConnection:
             )
             return CommandResult.from_response(command, data)
 
-        except (asyncio.TimeoutError, aiohttp.ClientError) as err:
+        except (TimeoutError, aiohttp.ClientError) as err:
             self.invalidate_auth()
             raise ConnectionError(f"Failed to send command: {err}") from err
 

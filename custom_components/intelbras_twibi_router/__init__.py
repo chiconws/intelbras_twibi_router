@@ -1,18 +1,16 @@
 """Twibi Router integration."""
 
-from datetime import timedelta
 import logging
+from datetime import timedelta
 from typing import TypedDict
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers import device_registry as dr, entity_registry as er
+from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-from .coordinator import TwibiCoordinator
-from .runtime_data import TwibiRuntimeData
-from .twibi_api import TwibiAPI
 from .api.enums import NodeRole
 from .const import (
     CONF_EXCLUDE_WIRED,
@@ -22,6 +20,9 @@ from .const import (
     DOMAIN,
     MANUFACTURER,
 )
+from .coordinator import TwibiCoordinator
+from .runtime_data import TwibiRuntimeData
+from .twibi_api import TwibiAPI
 
 PLATFORMS = [
     Platform.BUTTON,
