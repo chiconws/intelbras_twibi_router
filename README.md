@@ -2,7 +2,7 @@
 
 [![HACS][badge-hacs]][link-hacs] [![GitHub Release][badge-release]][link-release] [![GitHub Commit Activity][badge-commit-activity]][link-commits] [![HACS Validation][badge-hacs-validation]][link-hacs-validation] [![Hassfest][badge-hassfest]][link-hassfest]
 
-![Logo da integração](https://brands.home-assistant.io/intelbras_twibi_router/logo.png)
+![Logo da integração](https://brands.home-assistant.io/intelbras_twibi/logo.png)
 
 Integração local para roteadores **Intelbras Twibi** no Home Assistant.
 
@@ -23,13 +23,13 @@ Ela adiciona sensores do roteador, `device_trackers` para os dispositivos da red
 ### HACS
 
 1. Adicione este repositório como repositório customizado no HACS:
-   `https://github.com/chiconws/intelbras_twibi_router`
+   `https://github.com/chiconws/ha-intelbras-twibi`
 2. Selecione a categoria `Integration`.
 3. Instale a integração e reinicie o Home Assistant.
 
 ### Manual
 
-1. Copie a pasta `custom_components/intelbras_twibi_router` para `custom_components`.
+1. Copie a pasta `custom_components/intelbras_twibi` para `custom_components`.
 2. Reinicie o Home Assistant.
 
 ## Configuração
@@ -53,16 +53,16 @@ Se nenhum dispositivo for selecionado na configuração inicial, a integração 
 ```yaml
 logger:
   logs:
-    custom_components.intelbras_twibi_router: debug
+    custom_components.intelbras_twibi: debug
 ```
 
 [badge-hacs]: https://img.shields.io/badge/HACS-Custom-41BDF5.svg
-[badge-release]: https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fapi.github.com%2Frepos%2Fchiconws%2Fintelbras_twibi_router%2Freleases%2Flatest&query=%24.tag_name&label=release
-[badge-commit-activity]: https://img.shields.io/github/commit-activity/m/chiconws/intelbras_twibi_router
-[badge-hacs-validation]: https://github.com/chiconws/intelbras_twibi_router/actions/workflows/hacs.yaml/badge.svg
-[badge-hassfest]: https://github.com/chiconws/intelbras_twibi_router/actions/workflows/hassfest.yaml/badge.svg
+[badge-release]: https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fapi.github.com%2Frepos%2Fchiconws%2Fha-intelbras-twibi%2Freleases%2Flatest&query=%24.tag_name&label=release
+[badge-commit-activity]: https://img.shields.io/github/commit-activity/m/chiconws/ha-intelbras-twibi
+[badge-hacs-validation]: https://github.com/chiconws/ha-intelbras-twibi/actions/workflows/hacs.yaml/badge.svg
+[badge-hassfest]: https://github.com/chiconws/ha-intelbras-twibi/actions/workflows/hassfest.yaml/badge.svg
 [link-hacs]: https://github.com/custom-components/hacs
-[link-release]: https://github.com/chiconws/intelbras_twibi_router/releases/latest
-[link-commits]: https://github.com/chiconws/intelbras_twibi_router/commits/main
-[link-hacs-validation]: https://github.com/chiconws/intelbras_twibi_router/actions/workflows/hacs.yaml
-[link-hassfest]: https://github.com/chiconws/intelbras_twibi_router/actions/workflows/hassfest.yaml
+[link-release]: https://github.com/chiconws/ha-intelbras-twibi/releases/latest
+[link-commits]: https://github.com/chiconws/ha-intelbras-twibi/commits/main
+[link-hacs-validation]: https://github.com/chiconws/ha-intelbras-twibi/actions/workflows/hacs.yaml
+[link-hassfest]: https://github.com/chiconws/ha-intelbras-twibi/actions/workflows/hassfest.yaml
