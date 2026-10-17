@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-import probatio as vol
+import probatio
 from homeassistant.config_entries import ConfigFlow, ConfigFlowResult, OptionsFlow
 from homeassistant.const import CONF_HOST, CONF_PASSWORD
 from homeassistant.core import callback
@@ -57,8 +57,8 @@ class TwibiConfigFlow(ConfigFlow, domain=DOMAIN):
                 await self.async_set_unique_id(data.primary.serial)
                 self._abort_if_unique_id_configured(updates={CONF_HOST: user_input[CONF_HOST]})
                 return self.async_create_entry(title=f"Twibi {data.primary.model}", data=user_input)
-        schema = vol.Schema(
-            {vol.Required(CONF_HOST, default=DEFAULT_HOST): str, vol.Required(CONF_PASSWORD): PASSWORD}
+        schema = probatio.Schema(
+            {probatio.Required(CONF_HOST, default=DEFAULT_HOST): str, probatio.Required(CONF_PASSWORD): PASSWORD}
         )
         return self.async_show_form(
             step_id="user",
@@ -82,7 +82,7 @@ class TwibiConfigFlow(ConfigFlow, domain=DOMAIN):
                 return self.async_update_reload_and_abort(entry, data_updates=user_input)
         return self.async_show_form(
             step_id="reauth_confirm",
-            data_schema=vol.Schema({vol.Required(CONF_PASSWORD): PASSWORD}),
+            data_schema=probatio.Schema({probatio.Required(CONF_PASSWORD): PASSWORD}),
             errors=errors,
         )
 
@@ -98,7 +98,7 @@ class TwibiConfigFlow(ConfigFlow, domain=DOMAIN):
                 await self.async_set_unique_id(data.primary.serial)
                 self._abort_if_unique_id_mismatch(reason="wrong_router")
                 return self.async_update_reload_and_abort(entry, data_updates=user_input)
-        schema = vol.Schema({vol.Required(CONF_HOST): str, vol.Required(CONF_PASSWORD): PASSWORD})
+        schema = probatio.Schema({probatio.Required(CONF_HOST): str, probatio.Required(CONF_PASSWORD): PASSWORD})
         return self.async_show_form(
             step_id="reconfigure",
             data_schema=self.add_suggested_values_to_schema(schema, user_input or entry.data),
@@ -126,10 +126,10 @@ class TwibiOptionsFlow(OptionsFlow):
             SelectOptionDict(value=mac, label=f"{c.name or mac} ({c.ip}, {c.band})")
             for mac, c in sorted(clients.items(), key=lambda i: (i[1].name or i[0]).lower())
         ] + [SelectOptionDict(value=mac, label=mac) for mac in selected if mac not in clients]
-        schema = vol.Schema(
+        schema = probatio.Schema(
             {
-                vol.Required(CONF_WIFI_ONLY, default=entry.options.get(CONF_WIFI_ONLY, False)): bool,
-                vol.Optional(CONF_TRACKED_DEVICES, default=selected): SelectSelector(
+                probatio.Required(CONF_WIFI_ONLY, default=entry.options.get(CONF_WIFI_ONLY, False)): bool,
+                probatio.Optional(CONF_TRACKED_DEVICES, default=selected): SelectSelector(
                     SelectSelectorConfig(options=options, multiple=True, mode=SelectSelectorMode.DROPDOWN)
                 ),
             }
