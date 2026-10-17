@@ -1,306 +1,95 @@
-"""Device tracker for Twibi Router integration."""
+"""Device trackers: one per client of the mesh."""
 
-import asyncio
-import logging
-from typing import Any, cast
+from __future__ import annotations
 
-from homeassistant.components.device_tracker.config_entry import ScannerEntity
-from homeassistant.config_entries import ConfigEntry
+from homeassistant.components.device_tracker import ScannerEntity
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .api.models import OnlineDevice
-from .const import CONF_SELECTED_DEVICES, CONF_TRACK_ALL_DEVICES, DOMAIN
-from .coordinator import TwibiCoordinator
-from .runtime_data import get_runtime_data
+from .api import Client
+from .const import CONF_TRACKED_DEVICES, CONF_WIFI_ONLY
+from .coordinator import TwibiConfigEntry, TwibiCoordinator
 
-_LOGGER = logging.getLogger(__name__)
+PARALLEL_UPDATES = 0
 
 
 async def async_setup_entry(
-    hass: HomeAssistant,
-    entry: ConfigEntry,
-    async_add_entities: AddEntitiesCallback,
+    hass: HomeAssistant, entry: TwibiConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
-    """Set up device tracker dynamically."""
-    runtime_data = get_runtime_data(hass, entry.entry_id)
-    coordinator: TwibiCoordinator = runtime_data.coordinator
-    _reenable_integration_disabled_trackers(hass, entry.entry_id)
+    """Track the chosen clients, or every client seen if none were chosen."""
+    coordinator = entry.runtime_data
+    selected: list[str] = entry.options.get(CONF_TRACKED_DEVICES, [])
+    wifi_only: bool = entry.options.get(CONF_WIFI_ONLY, False)
+    known: set[str] = set()
 
-    entry.async_on_unload(
-        coordinator.async_add_listener(
-            lambda: async_check_new_devices(hass, entry, async_add_entities)
-        )
-    )
-    async_check_new_devices(hass, entry, async_add_entities)
+    @callback
+    def add_new() -> None:
+        if selected:
+            wanted = set(selected)
+        else:
+            wanted = {
+                mac
+                for mac, client in coordinator.data.clients.items()
+                if not (wifi_only and client.band == "wired")
+            }
+            if not known:  # first run: keep trackers created in earlier sessions
+                registry = er.async_get(hass)
+                wanted |= {
+                    e.unique_id
+                    for e in er.async_entries_for_config_entry(registry, entry.entry_id)
+                    if e.domain == "device_tracker"
+                }
+        if new := wanted - known:
+            known.update(new)
+            async_add_entities(TwibiTracker(coordinator, mac, bool(selected)) for mac in sorted(new))
 
-
-@callback
-def async_check_new_devices(
-    hass: HomeAssistant,
-    entry: ConfigEntry,
-    async_add_entities: AddEntitiesCallback,
-) -> None:
-    """Check for new devices and create entities."""
-    runtime_data = get_runtime_data(hass, entry.entry_id)
-    coordinator: TwibiCoordinator = runtime_data.coordinator
-    primary_device_identifier = runtime_data.primary_device_identifier
-
-    online_devices = coordinator.data.online_list
-    online_by_mac = {device.mac: device for device in online_devices}
-    current_macs = set(online_by_mac)
-    registered_macs = _get_registered_tracker_macs(hass, entry.entry_id)
-    selected_devices = entry.data.get(CONF_SELECTED_DEVICES, [])
-    track_all_devices = entry.data.get(
-        CONF_TRACK_ALL_DEVICES,
-        not selected_devices,
-    )
-
-    if track_all_devices:
-        desired_macs = current_macs | registered_macs
-    else:
-        desired_macs = set(selected_devices or [])
-
-    _LOGGER.debug(
-        "Found %d online devices: %s",
-        len(online_devices),
-        [f"{device.display_name} ({device.mac})" for device in online_devices],
-    )
-    _LOGGER.debug("Current MACs: %s", current_macs)
-    _LOGGER.debug("Registered MACs: %s", registered_macs)
-    _LOGGER.debug("Known MACs: %s", coordinator.known_macs)
-
-    new_macs = desired_macs - coordinator.known_macs
-    _LOGGER.debug("New MACs to process: %s", new_macs)
-
-    if not new_macs:
-        _LOGGER.debug("No new devices to add")
-        return
-
-    entities = []
-    stored_names = _get_registered_tracker_names(hass, entry.entry_id)
-    for mac in sorted(new_macs):
-        device_info = online_by_mac.get(mac)
-        device_name = (
-            device_info.display_name
-            if device_info is not None
-            else stored_names.get(mac) or f"Device {mac}"
-        )
-
-        _LOGGER.debug("Creating device tracker for MAC: %s, Name: %s", mac, device_name)
-
-        entities.append(
-            TwibiDeviceTracker(
-                coordinator,
-                primary_device_identifier,
-                mac,
-                device_name,
-                entry.entry_id,
-            )
-        )
-        coordinator.known_macs.add(mac)
-
-    if entities:
-        async_add_entities(entities)
-        hass.async_create_task(
-            _async_reenable_tracker_entities(hass, entry.entry_id, new_macs)
-        )
+    add_new()
+    entry.async_on_unload(coordinator.async_add_listener(add_new))
 
 
-@callback
-def _get_registered_tracker_macs(hass: HomeAssistant, entry_id: str) -> set[str]:
-    """Return MACs for tracker entities already stored in the entity registry."""
-    registry = er.async_get(hass)
-    return {
-        entity_entry.unique_id
-        for entity_entry in er.async_entries_for_config_entry(registry, entry_id)
-        if entity_entry.platform == DOMAIN
-        and entity_entry.domain == "device_tracker"
-        and entity_entry.unique_id
-    }
+class TwibiTracker(CoordinatorEntity[TwibiCoordinator], ScannerEntity):
+    """Home when the client shows up in the router's online list."""
 
-
-@callback
-def _get_registered_tracker_names(hass: HomeAssistant, entry_id: str) -> dict[str, str]:
-    """Return stored names for known network devices keyed by MAC."""
-    registry = dr.async_get(hass)
-    stored_names: dict[str, str] = {}
-
-    for device_entry in dr.async_entries_for_config_entry(registry, entry_id):
-        mac = next(
-            (
-                value
-                for connection_type, value in device_entry.connections
-                if connection_type == dr.CONNECTION_NETWORK_MAC
-            ),
-            None,
-        )
-        if mac:
-            stored_names[mac] = device_entry.name_by_user or device_entry.name or ""
-
-    return stored_names
-
-
-@callback
-def _reenable_integration_disabled_trackers(hass: HomeAssistant, entry_id: str) -> None:
-    """Re-enable tracker entities that older versions created as integration-disabled."""
-    registry = er.async_get(hass)
-
-    for entity_entry in er.async_entries_for_config_entry(registry, entry_id):
-        if (
-            entity_entry.platform == DOMAIN
-            and entity_entry.domain == "device_tracker"
-            and entity_entry.disabled_by == er.RegistryEntryDisabler.INTEGRATION
-        ):
-            _LOGGER.debug("Re-enabling device tracker %s", entity_entry.entity_id)
-            registry.async_update_entity(entity_entry.entity_id, disabled_by=None)
-
-
-async def _async_reenable_tracker_entities(
-    hass: HomeAssistant,
-    entry_id: str,
-    macs: set[str],
-) -> None:
-    """Re-enable freshly-created tracker entities if Home Assistant disabled them."""
-    registry = er.async_get(hass)
-    pending = set(macs)
-
-    for _ in range(40):
-        still_pending = set(pending)
-
-        for entity_entry in er.async_entries_for_config_entry(registry, entry_id):
-            if (
-                entity_entry.platform == DOMAIN
-                and entity_entry.domain == "device_tracker"
-                and entity_entry.unique_id in pending
-            ):
-                still_pending.discard(entity_entry.unique_id)
-                if entity_entry.disabled_by == er.RegistryEntryDisabler.INTEGRATION:
-                    _LOGGER.debug(
-                        "Re-enabling newly-added device tracker %s",
-                        entity_entry.entity_id,
-                    )
-                    registry.async_update_entity(entity_entry.entity_id, disabled_by=None)
-
-        pending = still_pending
-        if not pending:
-            return
-
-        await asyncio.sleep(0.25)
-
-    _LOGGER.debug(
-        "Timed out waiting for new device tracker entities to appear in the registry: %s",
-        sorted(pending),
-    )
-
-
-class TwibiDeviceTracker(ScannerEntity):
-    """Representation of a Twibi-connected device."""
-
-    coordinator: TwibiCoordinator
-
-    def __init__(
-        self,
-        coordinator: TwibiCoordinator,
-        primary_device_identifier: str,
-        mac: str,
-        device_name: str,
-        entry_id: str,
-    ) -> None:
-        """Initialize the device tracker."""
-        super().__init__()
-        self.coordinator = coordinator
-        self._mac = mac
-        self._primary_device_identifier = primary_device_identifier
-        self._entry_id = entry_id
-        self._device_name = device_name
-        self._last_known_online_status: bool | None = None
-        self._attr_should_poll = False
-        self._attr_name = device_name
+    def __init__(self, coordinator: TwibiCoordinator, mac: str, chosen: bool) -> None:
+        """Track one MAC address."""
+        super().__init__(coordinator)
         self._attr_mac_address = mac
-        self._update_cached_attributes()
+        self._chosen = chosen
+        client = coordinator.data.clients.get(mac)
+        self._attr_name = (client.name if client else "") or mac
 
     @property
     def entity_registry_enabled_default(self) -> bool:
-        """Keep Twibi trackers enabled when Home Assistant first registers them."""
-        return True
-
-    async def async_internal_added_to_hass(self) -> None:
-        """Create the client device before ScannerEntity attaches to it."""
-        dr.async_get(self.hass).async_get_or_create(
-            config_entry_id=self._entry_id,
-            identifiers={(DOMAIN, self._mac)},
-            connections={(dr.CONNECTION_NETWORK_MAC, self._mac)},
-            manufacturer="Unknown",
-            model="Network Device",
-            name=self._device_name,
-            via_device=(DOMAIN, self._primary_device_identifier),
-        )
-        await super().async_internal_added_to_hass()
-
-    async def async_added_to_hass(self) -> None:
-        """Register coordinator listener when the entity is added."""
-        await super().async_added_to_hass()
-        self.async_on_remove(
-            self.coordinator.async_add_listener(self._handle_coordinator_update)
-        )
+        """Enable clients the user picked; others follow Home Assistant's default."""
+        return self._chosen or super().entity_registry_enabled_default
 
     @property
-    def online_list(self) -> list[OnlineDevice]:
-        """Return a list with the online devices."""
-        return self.coordinator.data.online_list
-
-    @callback
-    def _handle_coordinator_update(self) -> None:
-        """Update cached attributes and availability from coordinator data."""
-        self._update_cached_attributes()
-        self.async_write_ha_state()
+    def _client(self) -> Client | None:
+        return self.coordinator.data.clients.get(self._attr_mac_address)
 
     @property
     def is_connected(self) -> bool:
-        """Return whether the device is currently connected."""
-        connected = self.current_info is not None
-        self._last_known_online_status = connected
-        return connected
-
-    def _update_cached_attributes(self) -> None:
-        """Refresh cached entity attributes from coordinator state."""
-        current_info = self.current_info
-        self._attr_ip_address = current_info.ip if current_info else None
-        self._attr_hostname = (
-            current_info.display_name if current_info else self._device_name
-        )
-        self._attr_name = current_info.display_name if current_info else self._device_name
-        self._attr_extra_state_attributes = {
-            "mac": self._mac,
-            "ip": self._attr_ip_address,
-            "connection": self.connection_type,
-        }
-
-        if self.coordinator.last_update_success:
-            self._attr_available = True
-        else:
-            self._attr_available = not self._last_known_online_status
-
-        cache = cast(dict[str, Any], self.__dict__)
-        for cache_key in (
-            "available",
-            "name",
-            "ip_address",
-            "hostname",
-            "extra_state_attributes",
-        ):
-            cache.pop(cache_key, None)
+        """Return whether the client is online."""
+        return self._client is not None
 
     @property
-    def current_info(self) -> OnlineDevice | None:
-        """Return the current device information."""
-        return self.coordinator.data.get_device_by_mac(self._mac)
+    def ip_address(self) -> str | None:
+        """Return the client's current IP."""
+        client = self._client
+        return client.ip if client else None
 
     @property
-    def connection_type(self) -> str:
-        """Return the connection type of the device."""
-        current_info = self.current_info
-        return current_info.connection_type if current_info else ""
+    def hostname(self) -> str | None:
+        """Return the name the router knows."""
+        client = self._client
+        return client.name if client and client.name else None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, str]:
+        """Expose how the client is connected."""
+        client = self._client
+        return {"connection": client.band} if client else {}
+
+
