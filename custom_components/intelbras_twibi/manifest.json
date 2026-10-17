@@ -1,0 +1,16 @@
+{
+  "domain": "intelbras_twibi",
+  "name": "Intelbras Twibi",
+  "codeowners": [
+    "@chiconws"
+  ],
+  "config_flow": true,
+  "dependencies": [],
+  "documentation": "https://github.com/chiconws/ha-intelbras-twibi",
+  "integration_type": "hub",
+  "iot_class": "local_polling",
+  "issue_tracker": "https://github.com/chiconws/ha-intelbras-twibi/issues",
+  "requirements": [],
+  "single_config_entry": true,
+  "version": "0.1.0"
+}

@@ -1,0 +1,15 @@
+{
+  "entity": {
+    "light": { "led": { "default": "mdi:led-on", "state": { "off": "mdi:led-off" } } },
+    "sensor": {
+      "wan_download": { "default": "mdi:download-network" },
+      "wan_upload": { "default": "mdi:upload-network" },
+      "connected_clients": { "default": "mdi:devices" },
+      "wan_ip": { "default": "mdi:ip-network" }
+    },
+    "switch": {
+      "guest_wifi": { "default": "mdi:wifi-plus" },
+      "upnp": { "default": "mdi:router-network" }
+    }
+  }
+}

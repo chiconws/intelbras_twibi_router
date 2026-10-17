@@ -1,0 +1,43 @@
+{
+  "node_info": [
+    {
+      "id": "1", "ip": "192.168.5.1", "role": "1", "netmask": "", "gw": "", "first_dns": "", "sec_dns": "",
+      "up_speed": "", "down_speed": "", "serial_number": "TWIBI0000PRIM", "led": "1", "location": "",
+      "lan_mac": "AA:BB:CC:00:00:01", "wan_mac": "AA:BB:CC:00:00:08", "5Gwifi_mac": "AA:BB:CC:00:00:05",
+      "2Gwifi_mac": "AA:BB:CC:00:00:02", "dut_name": "Twibi Fast", "dut_version": "1.1.10",
+      "sn": "TWIBI0000PRIM", "groupsn": "TWIBI0000PRIM,TWIBI0000SEC2", "Uptime": "17658",
+      "up_date": "30-03-2025 08:34:42", "ipv6": "", "net_status": "1", "link_status": "1"
+    },
+    {
+      "id": "0", "ip": "192.168.5.110", "role": "0", "netmask": "", "gw": "", "first_dns": "", "sec_dns": "",
+      "up_speed": "", "down_speed": "", "serial_number": "TWIBI0000SEC2", "led": "0", "location": "",
+      "lan_mac": "AA:BB:CC:00:01:01", "wan_mac": "AA:BB:CC:00:01:08", "5Gwifi_mac": "AA:BB:CC:00:01:05",
+      "2Gwifi_mac": "AA:BB:CC:00:01:02", "dut_name": "Twibi Fast", "dut_version": "1.1.10",
+      "sn": "TWIBI0000SEC2", "groupsn": "TWIBI0000PRIM,TWIBI0000SEC2", "Uptime": "17662",
+      "up_date": "30-03-2025 08:34:42", "ipv6": "", "net_status": "1", "link_status": "1", "link_quality": "-82"
+    }
+  ],
+  "online_list": [
+    {
+      "dev_ip": "192.168.5.20", "dev_name": "Phone", "dev_mac": "11:22:33:44:55:01", "download_speed": "0",
+      "upload_speed": "0", "connect_time": "100", "sn": "TWIBI0000PRIM", "rssi": "-50", "tx_rate": "866",
+      "wifi_mode": "AC"
+    },
+    {
+      "dev_ip": "192.168.5.21", "dev_name": "", "dev_mac": "11:22:33:44:55:02", "download_speed": "0",
+      "upload_speed": "0", "connect_time": "100", "sn": "TWIBI0000SEC2", "rssi": "0", "tx_rate": "0",
+      "wifi_mode": "--"
+    }
+  ],
+  "wan_statistic": [
+    { "id": "1", "up_speed": "120", "down_speed": "2400", "ttotal_up": "0", "ttotal_down": "0" }
+  ],
+  "wan_info": [
+    {
+      "id": "1", "ip": "100.64.0.10", "netmask": "255.255.255.255", "gw": "100.64.0.1", "mac": "AA:BB:CC:00:00:08",
+      "first_dns": "1.1.1.1", "sec_dns": "8.8.8.8", "ipv6": "", "ipv6_gw": "", "ipv6_first_dns": "", "ipv6_sec_dns": ""
+    }
+  ],
+  "guest_info": { "guest_en": "0", "guest_ssid": "Visitors", "guest_pass": "guestsecret", "guest_time": "always", "limit": "0" },
+  "upnp_info": { "upnp_en": "1" }
+}
