@@ -1,5 +1,6 @@
 {
-  "name": "Intelbras Twibi Router",
-  "country": "BR",
-  "homeassistant": "2024.11.0"
+  "name": "Intelbras Twibi",
+  "render_readme": true,
+  "homeassistant": "2024.11.0",
+  "country": "BR"
 }

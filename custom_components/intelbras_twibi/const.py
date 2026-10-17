@@ -2,7 +2,7 @@
 
 import voluptuous as vol
 
-DOMAIN = "intelbras_twibi_router"
+DOMAIN = "intelbras_twibi"
 
 CONF_TWIBI_IP_ADDRESS = "Endereço IP do Twibi"
 CONF_PASSWORD = "password"

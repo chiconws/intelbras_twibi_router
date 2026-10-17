@@ -31,7 +31,7 @@ jobs:
         run: python -m pip install -r requirements_test.txt
 
       - name: Run Ruff
-        run: python -m ruff check custom_components/intelbras_twibi_router tests
+        run: python -m ruff check custom_components/intelbras_twibi tests
 
       - name: Run tests with branch coverage
         run: |

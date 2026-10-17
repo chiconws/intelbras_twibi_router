@@ -6,7 +6,7 @@ from homeassistant import config_entries
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
-from custom_components.intelbras_twibi_router.const import (
+from custom_components.intelbras_twibi.const import (
     CONF_PASSWORD,
     CONF_TWIBI_IP_ADDRESS,
     CONF_UPDATE_INTERVAL,
@@ -31,7 +31,7 @@ async def test_user_step_shows_form(hass: HomeAssistant) -> None:
 async def test_wrong_password_shows_error(hass: HomeAssistant) -> None:
     result = await _start(hass)
     with patch(
-        "custom_components.intelbras_twibi_router.config_flow.TwibiAPI.authenticate",
+        "custom_components.intelbras_twibi.config_flow.TwibiAPI.authenticate",
         AsyncMock(return_value=MagicMock(authenticated=False)),
     ):
         result = await hass.config_entries.flow.async_configure(result["flow_id"], USER_INPUT)
@@ -42,7 +42,7 @@ async def test_wrong_password_shows_error(hass: HomeAssistant) -> None:
 async def test_valid_credentials_advance_to_wifi_filter(hass: HomeAssistant) -> None:
     result = await _start(hass)
     with patch(
-        "custom_components.intelbras_twibi_router.config_flow.TwibiAPI.authenticate",
+        "custom_components.intelbras_twibi.config_flow.TwibiAPI.authenticate",
         AsyncMock(return_value=MagicMock(authenticated=True)),
     ):
         result = await hass.config_entries.flow.async_configure(result["flow_id"], USER_INPUT)
