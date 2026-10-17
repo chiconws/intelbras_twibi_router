@@ -1,6 +1,6 @@
 # Agent Notes: Intelbras Twibi
 
-Standard: ha-standards v0.4.1   <!-- /home/raphael/dev/ha-standards/STANDARD.md -->
+Standard: ha-standards v0.5.2   <!-- /home/raphael/dev/ha-standards/STANDARD.md -->
 
 Language: README in **pt-BR**; code, logs and `strings.json` in English; translations en + pt-BR.
 
