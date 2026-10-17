@@ -57,6 +57,13 @@ async def test_get_data_parses_everything(hass, aioclient_mock, payload) -> None
     assert login["pwd"] == "5ebe2294ecd0e0f08eab7690d2a6ee69"  # md5("secret")
 
 
+async def test_cabled_backhaul_has_no_signal(hass, aioclient_mock, payload) -> None:
+    payload["node_info"][1]["link_quality"] = "1"
+    mock_router(aioclient_mock, payload)
+    data = await make_client(hass).async_get_data()
+    assert data.nodes[1].link_quality is None
+
+
 async def test_optional_module_failure_is_skipped(hass, aioclient_mock, payload) -> None:
     aioclient_mock.post(SET, json={"errcode": "0"})
     aioclient_mock.get(get_url(*api.CORE_MODULES), json={k: payload[k] for k in api.CORE_MODULES})

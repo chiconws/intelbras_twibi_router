@@ -67,7 +67,7 @@ quais dispositivos rastrear (vazio = todos) e se cabos devem ser ignorados.
 | Clientes conectados | `sensor` | Quantidade de dispositivos na rede |
 | Endereço IP da WAN | `sensor` | IP recebido do provedor (diagnóstico) |
 | Última inicialização | `sensor` | Quando cada unidade ligou (diagnóstico) |
-| Qualidade do link mesh | `sensor` | Sinal entre a unidade secundária e a principal, como o Twibi informa (dBm em firmwares antigos, nível no 1.1.11) |
+| Qualidade do link mesh | `sensor` | Sinal Wi-Fi entre a unidade secundária e a principal, em dBm (desconhecido quando ligadas por cabo) |
 | LED de status | `light` | LED da frente de cada unidade |
 | Wi-Fi de visitantes / UPnP | `switch` | Liga e desliga, mantendo nome e senha da rede de visitantes |
 | Reiniciar rede mesh | `button` | Reinicia todas as unidades |
