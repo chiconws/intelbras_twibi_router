@@ -65,7 +65,7 @@ class Node:
             led_on=str(data.get("led")) == "1",
             uptime=_int(data.get("Uptime")),
             wan_connected=str(data.get("net_status")) == "1",
-            link_quality=None if is_primary else _int(data.get("link_quality")),
+            link_quality=_backhaul_dbm(data.get("link_quality")) if not is_primary else None,
         )
 
 
@@ -289,6 +289,12 @@ def _int(value: Any) -> int | None:
         return int(value)
     except (TypeError, ValueError):
         return None
+
+
+def _backhaul_dbm(value: Any) -> int | None:
+    # Wi-Fi backhaul reports dBm (-82); a cabled backhaul reports "1", which is no signal.
+    dbm = _int(value)
+    return dbm if dbm is not None and dbm < 0 else None
 
 
 def _float(value: Any) -> float | None:

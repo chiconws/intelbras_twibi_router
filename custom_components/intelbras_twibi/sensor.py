@@ -12,7 +12,7 @@ from homeassistant.components.sensor import (
     SensorEntityDescription,
     SensorStateClass,
 )
-from homeassistant.const import EntityCategory, UnitOfDataRate
+from homeassistant.const import SIGNAL_STRENGTH_DECIBELS_MILLIWATT, EntityCategory, UnitOfDataRate
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.util import dt as dt_util
@@ -60,10 +60,11 @@ ROUTER_SENSORS = (
     ),
 )
 
-# Firmware 1.1.10 reports dBm (-82), 1.1.11 a small level (1), so no unit is claimed.
 LINK_QUALITY = SensorEntityDescription(
     key="link_quality",
+    device_class=SensorDeviceClass.SIGNAL_STRENGTH,
     state_class=SensorStateClass.MEASUREMENT,
+    native_unit_of_measurement=SIGNAL_STRENGTH_DECIBELS_MILLIWATT,
     entity_category=EntityCategory.DIAGNOSTIC,
 )
 
@@ -113,7 +114,7 @@ class TwibiLinkQualitySensor(TwibiEntity, SensorEntity):
 
     @property
     def native_value(self) -> int | None:
-        """Return the link quality as the router reports it."""
+        """Return the Wi-Fi backhaul signal in dBm (unknown on a cabled backhaul)."""
         node = self.node
         return node.link_quality if node else None
 
