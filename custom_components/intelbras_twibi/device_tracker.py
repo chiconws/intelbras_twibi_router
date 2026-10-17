@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from homeassistant.components.device_tracker import ScannerEntity
+from homeassistant.components.device_tracker.entity import ScannerEntity
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -55,6 +55,7 @@ class TwibiTracker(CoordinatorEntity[TwibiCoordinator], ScannerEntity):
     def __init__(self, coordinator: TwibiCoordinator, mac: str, chosen: bool) -> None:
         """Track one MAC address."""
         super().__init__(coordinator)
+        self._mac = mac
         self._attr_mac_address = mac
         self._chosen = chosen
         client = coordinator.data.clients.get(mac)
@@ -67,7 +68,7 @@ class TwibiTracker(CoordinatorEntity[TwibiCoordinator], ScannerEntity):
 
     @property
     def _client(self) -> Client | None:
-        return self.coordinator.data.clients.get(self._attr_mac_address)
+        return self.coordinator.data.clients.get(self._mac)
 
     @property
     def is_connected(self) -> bool:

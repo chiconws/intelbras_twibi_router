@@ -18,7 +18,9 @@ SECONDARY = "twibi_fast_sec2"
 
 
 def state(hass: HomeAssistant, entity_id: str) -> str:
-    return hass.states.get(entity_id).state
+    current = hass.states.get(entity_id)
+    assert current, f"{entity_id} does not exist"
+    return current.state
 
 
 async def test_states(hass: HomeAssistant, loaded) -> None:
@@ -56,7 +58,8 @@ async def test_uptime_is_stable_and_follows_reboots(
 async def test_trackers_follow_online_list(hass: HomeAssistant, loaded, payload, freezer) -> None:
     registry = er.async_get(hass)
     phone = registry.async_get_entity_id("device_tracker", "intelbras_twibi", "11:22:33:44:55:01")
-    assert phone and registry.async_get(phone).disabled_by is not None  # HA default for unknown MACs
+    tracker = registry.async_get(phone) if phone else None
+    assert phone and tracker and tracker.disabled_by is not None  # HA default for unknown MACs
 
     registry.async_update_entity(phone, disabled_by=None)
     await hass.config_entries.async_reload(loaded.entry_id)
@@ -78,7 +81,8 @@ async def test_chosen_trackers_are_enabled(hass: HomeAssistant, entry, client) -
     await hass.async_block_till_done()
     trackers = [s for s in hass.states.async_entity_ids("device_tracker")]
     assert len(trackers) == 1
-    assert hass.states.get(trackers[0]).attributes["connection"] == "wired"
+    tracker = hass.states.get(trackers[0])
+    assert tracker and tracker.attributes["connection"] == "wired"
 
 
 async def test_wifi_only_skips_wired(hass: HomeAssistant, entry, client) -> None:

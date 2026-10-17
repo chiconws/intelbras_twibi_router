@@ -30,7 +30,7 @@ SWITCHES = (
     TwibiSwitchDescription(
         key="guest_wifi",
         is_on_fn=lambda d: d.guest.enabled if d.guest else None,
-        set_fn=lambda c, d, on: c.async_set_guest(d.guest, on),
+        set_fn=lambda c, d, on: c.async_set_guest(d.guest, on),  # type: ignore[arg-type]  # only created when guest is reported
     ),
     TwibiSwitchDescription(
         key="upnp",

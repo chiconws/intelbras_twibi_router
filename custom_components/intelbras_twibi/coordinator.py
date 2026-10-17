@@ -28,6 +28,7 @@ class TwibiCoordinator(DataUpdateCoordinator[RouterData]):
             hass, _LOGGER, config_entry=entry, name=DOMAIN, update_interval=SCAN_INTERVAL
         )
         self.client = client
+        self.primary_device_id: str | None = None  # set in async_setup_entry
 
     async def _async_update_data(self) -> RouterData:
         try:

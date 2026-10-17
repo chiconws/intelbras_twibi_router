@@ -13,6 +13,23 @@ from .const import DOMAIN, MANUFACTURER
 from .coordinator import TwibiCoordinator
 
 
+def node_device_info(node: Node, via_device_id: str | None = None) -> DeviceInfo:
+    """Describe a mesh unit for the device registry."""
+    info = DeviceInfo(
+        identifiers={(DOMAIN, node.serial)},
+        connections={(CONNECTION_NETWORK_MAC, node.mac)} if node.mac else set(),
+        manufacturer=MANUFACTURER,
+        model=node.model,
+        name=f"{node.model} {node.serial[-4:]}",
+        serial_number=node.serial,
+        sw_version=node.firmware,
+        configuration_url=f"http://{node.ip}" if node.ip else None,
+    )
+    if via_device_id and not node.is_primary:
+        info["via_device_id"] = via_device_id
+    return info
+
+
 class TwibiEntity(CoordinatorEntity[TwibiCoordinator]):
     """Entity attached to a Twibi node's device."""
 
@@ -24,19 +41,8 @@ class TwibiEntity(CoordinatorEntity[TwibiCoordinator]):
         self._serial = serial
         self._attr_unique_id = f"{serial}_{key}"
         self._attr_translation_key = key
-        node = self.node
-        primary = coordinator.data.primary
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, serial)},
-            connections={(CONNECTION_NETWORK_MAC, node.mac)} if node and node.mac else set(),
-            manufacturer=MANUFACTURER,
-            model=node.model if node else None,
-            name=f"{node.model if node else 'Twibi'} {serial[-4:]}",
-            serial_number=serial,
-            sw_version=node.firmware if node else None,
-            configuration_url=f"http://{node.ip}" if node and node.ip else None,
-            via_device=None if serial == primary.serial else (DOMAIN, primary.serial),
-        )
+        node = next(n for n in coordinator.data.nodes if n.serial == serial)
+        self._attr_device_info = node_device_info(node, coordinator.primary_device_id)
 
     @property
     def node(self) -> Node | None:

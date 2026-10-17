@@ -51,7 +51,7 @@ async def test_get_data_parses_everything(hass, aioclient_mock, payload) -> None
     assert data.clients["11:22:33:44:55:01"].band == "5ghz"
     assert data.clients["11:22:33:44:55:02"].band == "wired"
     assert (data.wan_download, data.wan_upload, data.wan_ip) == (2400.0, 120.0, "100.64.0.10")
-    assert data.guest.ssid == "Visitors" and not data.guest.enabled
+    assert data.guest and data.guest.ssid == "Visitors" and not data.guest.enabled
     assert data.upnp_enabled is True
     login = aioclient_mock.mock_calls[0][2]["login"]
     assert login["pwd"] == "5ebe2294ecd0e0f08eab7690d2a6ee69"  # md5("secret")
@@ -111,6 +111,7 @@ async def test_commands(hass, aioclient_mock, payload) -> None:
     aioclient_mock.post(SET, json={"errcode": "0"})
     client = make_client(hass)
     guest = RouterData.from_dict(payload).guest
+    assert guest
     await client.async_set_led("SN1", False)
     await client.async_set_upnp(True)
     await client.async_set_guest(guest, True)
