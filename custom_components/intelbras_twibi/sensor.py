@@ -81,7 +81,7 @@ async def async_setup_entry(
     for node in coordinator.data.nodes:
         entities.append(TwibiUptimeSensor(coordinator, node.serial))
         if not node.is_primary:
-            entities.append(TwibiLinkQualitySensor(coordinator, node.serial))
+            entities.append(TwibiLinkQualitySensor(coordinator, node.serial, LINK_QUALITY.key))
     async_add_entities(entities)
 
 
@@ -107,10 +107,6 @@ class TwibiLinkQualitySensor(TwibiEntity, SensorEntity):
     """Mesh backhaul signal of a secondary node."""
 
     entity_description = LINK_QUALITY
-
-    def __init__(self, coordinator: TwibiCoordinator, serial: str) -> None:
-        """Bind to the node."""
-        super().__init__(coordinator, serial, LINK_QUALITY.key)
 
     @property
     def native_value(self) -> int | None:

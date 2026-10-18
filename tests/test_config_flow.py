@@ -32,12 +32,13 @@ async def test_user_creates_entry(hass: HomeAssistant, client) -> None:
     [(TwibiAuthError, "invalid_auth"), (TwibiConnectionError, "cannot_connect"), (TwibiError, "unknown")],
 )
 async def test_user_errors_then_recovers(hass: HomeAssistant, client, exc, error) -> None:
-    client.async_login.side_effect = exc
+    ok = client.async_get_data.side_effect
+    client.async_get_data.side_effect = exc
     result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": config_entries.SOURCE_USER})
     result = await hass.config_entries.flow.async_configure(result["flow_id"], ENTRY_DATA)
     assert result["errors"] == {"base": error}
 
-    client.async_login.side_effect = None
+    client.async_get_data.side_effect = ok
     result = await hass.config_entries.flow.async_configure(result["flow_id"], ENTRY_DATA)
     assert result["type"] is FlowResultType.CREATE_ENTRY
 
@@ -51,11 +52,12 @@ async def test_reauth(hass: HomeAssistant, loaded, client) -> None:
     result = await loaded.start_reauth_flow(hass)
     assert result["step_id"] == "reauth_confirm"
 
-    client.async_login.side_effect = TwibiAuthError
+    ok = client.async_get_data.side_effect
+    client.async_get_data.side_effect = TwibiAuthError
     result = await hass.config_entries.flow.async_configure(result["flow_id"], {CONF_PASSWORD: "bad"})
     assert result["errors"] == {"base": "invalid_auth"}
 
-    client.async_login.side_effect = None
+    client.async_get_data.side_effect = ok
     result = await hass.config_entries.flow.async_configure(result["flow_id"], {CONF_PASSWORD: "new"})
     assert result["reason"] == "reauth_successful"
     assert loaded.data[CONF_PASSWORD] == "new"
@@ -65,13 +67,14 @@ async def test_reconfigure(hass: HomeAssistant, loaded, client) -> None:
     result = await loaded.start_reconfigure_flow(hass)
     assert result["step_id"] == "reconfigure"
 
-    client.async_login.side_effect = TwibiConnectionError
+    ok = client.async_get_data.side_effect
+    client.async_get_data.side_effect = TwibiConnectionError
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], {CONF_HOST: "10.0.0.1", CONF_PASSWORD: "x"}
     )
     assert result["errors"] == {"base": "cannot_connect"}
 
-    client.async_login.side_effect = None
+    client.async_get_data.side_effect = ok
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], {CONF_HOST: "10.0.0.2", CONF_PASSWORD: "x"}
     )
