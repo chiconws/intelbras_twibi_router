@@ -63,7 +63,7 @@ class Node:
             mac=data.get("lan_mac", ""),
             is_primary=is_primary,
             led_on=str(data.get("led")) == "1",
-            uptime=_int(data.get("Uptime")),
+            uptime=_num(int, data.get("Uptime")),
             wan_connected=str(data.get("net_status")) == "1",
             link_quality=_backhaul_dbm(data.get("link_quality")) if not is_primary else None,
         )
@@ -133,8 +133,8 @@ class RouterData:
         return cls(
             nodes=nodes,
             clients={c.mac: c for c in clients},
-            wan_download=_float(wan.get("down_speed")),
-            wan_upload=_float(wan.get("up_speed")),
+            wan_download=_num(float, wan.get("down_speed")),
+            wan_upload=_num(float, wan.get("up_speed")),
             wan_ip=wan_info.get("ip") or None,
             guest=GuestNetwork(
                 enabled=str(guest.get("guest_en")) == "1",
@@ -284,24 +284,17 @@ def _now_ms() -> int:
     return int(time.time() * 1000)
 
 
-def _int(value: Any) -> int | None:
+def _num[T: (int, float)](cast: type[T], value: Any) -> T | None:
     try:
-        return int(value)
+        return cast(value)
     except (TypeError, ValueError):
         return None
 
 
 def _backhaul_dbm(value: Any) -> int | None:
     # Wi-Fi backhaul reports dBm (-82); a cabled backhaul reports "1", which is no signal.
-    dbm = _int(value)
+    dbm = _num(int, value)
     return dbm if dbm is not None and dbm < 0 else None
-
-
-def _float(value: Any) -> float | None:
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return None
 
 
 def _version(text: str) -> tuple[int, ...]:
