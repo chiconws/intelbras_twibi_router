@@ -35,10 +35,9 @@ class TwibiConfigFlow(ConfigFlow, domain=DOMAIN):
     VERSION = 1
 
     async def _async_try(self, host: str, password: str) -> tuple[RouterData | None, dict[str, str]]:
-        """Log in and read the router; return the snapshot or form errors."""
+        """Read the router (logging in first); return the snapshot or form errors."""
         client = TwibiClient(host, password, async_get_clientsession(self.hass))
         try:
-            await client.async_login()
             return await client.async_get_data(), {}
         except TwibiAuthError:
             return None, {"base": "invalid_auth"}
